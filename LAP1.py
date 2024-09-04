@@ -343,7 +343,7 @@ plt.legend()
 # Erreur
 # 
 
-n_values = np.arange(5, 101, 5)  
+n_values = np.arange(5, 1001, 5)  
 h_values = prm1.L / n_values  
 Erreur_L2 = []
 Erreur_Linf = []
@@ -392,7 +392,7 @@ plt.ylabel('Temperature (°C)')
 plt.xlim(0, prm2.L)
 plt.legend()
 
-n_values = np.arange(5, 101, 5)  
+n_values = np.arange(5, 1001, 5)  
 h_values = prm2.L / n_values  
 Erreur_L2 = []
 Erreur_Linf = []
@@ -440,7 +440,7 @@ plt.xlabel('Position (m)')
 plt.ylabel('Temperature (°C)')
 plt.xlim(0, prm3.L)
 plt.legend()
-n_values = np.arange(5, 101, 5)  
+n_values = np.arange(5, 1001, 5)  
 h_values = prm2.L / n_values  
 Erreur_L2 = []
 Erreur_Linf = []

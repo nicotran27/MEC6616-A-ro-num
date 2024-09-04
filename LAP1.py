@@ -149,7 +149,6 @@ def erreur_Linf(sol_num, sol_anal):
     return np.max(np.abs(sol_num - sol_anal))
 
 def OrdreConvergeance(x, y):
-    """Calculate the numerical derivative using finite differences."""
     dx = np.diff(x)
     dy = np.diff(y)
     slope = dy / dx

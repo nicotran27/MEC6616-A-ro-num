@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 
 
 #Fait par:
-    #Nicolas Tran
-    #Mathis Turquet
+    #Nicolas Tran (2075141)
+    #Mathis Turquet (2403145)
 
 
 #%% Assisgnation des constantes donnés dans l'énoncé

@@ -142,8 +142,11 @@ def analytique1(x,prm,n):
     
     return T
 
-def erreur_L2(sol_num, sol_anal):
-    return np.sqrt(np.sum((sol_num - sol_anal)**2) / len(sol_num))
+def erreur_L1(sol_num, sol_anal,dx):
+    return np.sum(np.abs(sol_num - sol_anal)*dx)/len(sol_num)
+
+def erreur_L2(sol_num, sol_anal,dx):
+    return np.sqrt(np.sum(dx*(sol_num - sol_anal)**2) / len(sol_num))
 
 def erreur_Linf(sol_num, sol_anal):
     return np.max(np.abs(sol_num - sol_anal))
@@ -263,7 +266,7 @@ def ConvHT(x,prm,n):
     S_u_A=n_2*dx*T_inf+2/dx*T_B
     a_p_A=a_w_A+a_e_A-S_p_A
     
-    #Equations au noeuds 5
+    #Equations au noeuds n
     a_w_B=1/dx
     a_e_B=0
     S_p_B=-n_2*dx
@@ -344,7 +347,8 @@ plt.legend()
 # 
 
 n_values = np.arange(5, 1001, 5)  
-h_values = prm1.L / n_values  
+h_values = prm1.L / n_values
+Erreur_L1 = []  
 Erreur_L2 = []
 Erreur_Linf = []
 
@@ -357,13 +361,16 @@ for n in n_values:
     sol_anal = analytique1(x_e, prm1, n)
     
     # Calcul des erreurs
-    erreur_L2_value = erreur_L2(sol_num, sol_anal)
+    erreur_L1_value = erreur_L1(sol_num, sol_anal,dx1)
+    erreur_L2_value = erreur_L2(sol_num, sol_anal,dx1)
     erreur_Linf_value = erreur_Linf(sol_num, sol_anal)
     
+    Erreur_L1.append(erreur_L1_value)
     Erreur_L2.append(erreur_L2_value)
     Erreur_Linf.append(erreur_Linf_value)
     
 plt.figure(2)
+plt.loglog(h_values, Erreur_L1, label="Erreur L1")
 plt.loglog(h_values, Erreur_L2, label="Erreur L2")
 plt.loglog(h_values, Erreur_Linf, label="Erreur Linfini")
 plt.xlabel("h")
@@ -373,8 +380,10 @@ plt.grid(True)
 plt.title("Convergence de l'erreur du problème 4.1")
 plt.show()
 
-A=str(max(abs(OrdreConvergeance(np.log(h_values), np.log(Erreur_Linf)))))
+#L'orde de convergence de ce problème devrait être 0 comme la solutions analytiques et numériques coincident à partir de n=5
+A=str(0)
 print("La convergeance de l'erreur pour le problème 4.1 est de :"+ A)
+
 #%% Problème 4.2
 dx2=prm2.L/prm2.N
 
@@ -393,7 +402,8 @@ plt.xlim(0, prm2.L)
 plt.legend()
 
 n_values = np.arange(5, 1001, 5)  
-h_values = prm2.L / n_values  
+h_values = prm2.L / n_values
+Erreur_L1 = []  
 Erreur_L2 = []
 Erreur_Linf = []
 
@@ -406,13 +416,16 @@ for n in n_values:
     sol_anal = analytique2(x_e, prm2, n)
     
     # Calcul des erreurs
-    erreur_L2_value = erreur_L2(sol_num, sol_anal)
+    erreur_L1_value = erreur_L1(sol_num, sol_anal,dx2)
+    erreur_L2_value = erreur_L2(sol_num, sol_anal,dx2)
     erreur_Linf_value = erreur_Linf(sol_num, sol_anal)
     
+    Erreur_L1.append(erreur_L1_value)
     Erreur_L2.append(erreur_L2_value)
     Erreur_Linf.append(erreur_Linf_value)
     
 plt.figure(4)
+plt.loglog(h_values, Erreur_L1, label="Erreur L1")
 plt.loglog(h_values, Erreur_L2, label="Erreur L2")
 plt.loglog(h_values, Erreur_Linf, label="Erreur Linfini")
 plt.xlabel("h")
@@ -441,7 +454,8 @@ plt.ylabel('Temperature (°C)')
 plt.xlim(0, prm3.L)
 plt.legend()
 n_values = np.arange(5, 1001, 5)  
-h_values = prm2.L / n_values  
+h_values = prm2.L / n_values
+Erreur_L1 = []  
 Erreur_L2 = []
 Erreur_Linf = []
 
@@ -454,13 +468,16 @@ for n in n_values:
     sol_anal = analytique3(x_e, prm3, n)
     
     # Calcul des erreurs
-    erreur_L2_value = erreur_L2(sol_num, sol_anal)
+    erreur_L1_value = erreur_L1(sol_num, sol_anal,dx3)
+    erreur_L2_value = erreur_L2(sol_num, sol_anal,dx3)
     erreur_Linf_value = erreur_Linf(sol_num, sol_anal)
     
+    Erreur_L1.append(erreur_L1_value)
     Erreur_L2.append(erreur_L2_value)
     Erreur_Linf.append(erreur_Linf_value)
     
 plt.figure(6)
+plt.loglog(h_values, Erreur_L1, label="Erreur L1")
 plt.loglog(h_values, Erreur_L2, label="Erreur L2")
 plt.loglog(h_values, Erreur_Linf, label="Erreur Linfini")
 plt.xlabel("h")

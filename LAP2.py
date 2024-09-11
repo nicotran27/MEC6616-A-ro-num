@@ -33,11 +33,21 @@ class parametres2():
     phi_A = 1  # Temperature à x=A
     phi_B = 0  # Temperature à x=B
     N =  5    #Nombre de noeuds    
-
+class parametres3():
+    L = 1     # Longueur
+    rho = 1 #kg/m^3
+    Gamma = 0.1 #kg/m.s
+    x_0 = 0
+    x_f = L
+    u= 2.5 # Vitesse m/s
+    phi_A = 1  # Temperature à x=A
+    phi_B = 0  # Temperature à x=B
+    N =  20    #Nombre de noeuds    
     
     
 prm1 = parametres1()
 prm2 = parametres2()
+prm3 = parametres3()
 
 #%% Fonctions
 def ConvDiff1DCentré(x,prm,n):
@@ -248,8 +258,6 @@ plt.legend()
 
 
 # Erreur
-
-
 n_values = np.arange(5, 1001, 5)  
 h_values = prm1.L / n_values
 Erreur_L1 = []  
@@ -288,17 +296,18 @@ plt.show()
 A=str(max(abs(OrdreConvergeance(np.log(h_values), np.log(Erreur_Linf)))))
 print("La convergeance de l'erreur pour le problème 5.1 (Case 1) est de :"+ A)
 
+
 #Case 2
-dx1=prm1.L/prm1.N
+dx2=prm2.L/prm2.N
 
 # Graphiques
-x1 = np.linspace(prm1.x_0 + dx1 / 2, prm1.x_f - dx1 / 2, prm1.N)
-phi2 = ConvDiff1DCentré(x1, prm2, prm2.N)
-x_anal = np.linspace(prm1.x_0 + dx1 / 2, prm1.x_f - dx1 / 2, prm1.N)
+x2 = np.linspace(prm1.x_0 + dx2 / 2, prm1.x_f - dx2 / 2, prm2.N)
+phi2 = ConvDiff1DCentré(x2, prm2, prm2.N)
+x_anal = np.linspace(prm1.x_0 + dx2 / 2, prm1.x_f - dx2 / 2, prm1.N)
 T_anal2 = analytique(x_anal, prm2, prm2.N)
 plt.figure(1)
-plt.plot(x1, phi2, marker = '.', label='Solution numérique')
-plt.plot(x_anal, T_anal, label='Solution analytique' )
+plt.plot(x2, phi2, marker = '.', label='Solution numérique')
+plt.plot(x_anal, T_anal2, label='Solution analytique' )
 plt.title(f'Solutions du problème 5.1 à n={prm2.N} et u={prm2.u} m/s (Case 2)')
 plt.xlabel('Position (m)')
 plt.ylabel('Phi')
@@ -316,11 +325,11 @@ Erreur_L2 = []
 Erreur_Linf = []
 
 for n in n_values:
-    dx1 = prm1.L / n
+    dx2 = prm2.L / n
     x_e = np.linspace(prm1.L / n / 2, prm1.L - prm1.L / n / 2, n)
     
     # Solution numérique et analytique
-    sol_num = ConvDiff1DCentré(x1, prm2, n)
+    sol_num = ConvDiff1DCentré(x2, prm2, n)
     sol_anal = analytique(x_e, prm2, n)
     
     # Calcul des erreurs
@@ -344,8 +353,65 @@ plt.title(f"Convergence de l'erreur du problème 5.1 à n={prm2.N} et u={prm2.u}
 plt.show()
 
 #Ordre de convergeance
-A=str(max(abs(OrdreConvergeance(np.log(h_values), np.log(Erreur_Linf)))))
-print("La convergeance de l'erreur pour le problème 5.1 (Case 2) est de :"+ A)
+B=str(max(abs(OrdreConvergeance(np.log(h_values), np.log(Erreur_Linf)))))
+print("La convergeance de l'erreur pour le problème 5.1 (Case 2) est de :"+ B)
+
+
+#Case 3
+dx3=prm3.L/prm3.N
+
+# Graphiques
+x3 = np.linspace(prm3.x_0 + dx3 / 2, prm3.x_f - dx3 / 2, prm3.N)
+phi3 = ConvDiff1DCentré(x3, prm3, prm3.N)
+x_anal3 = np.linspace(prm3.x_0 + dx3 / 2, prm3.x_f - dx3 / 2, prm3.N)
+T_anal3 = analytique(x_anal3, prm3, prm3.N)
+plt.figure(1)
+plt.plot(x3, phi3, marker = '.', label='Solution numérique')
+plt.plot(x_anal3, T_anal3, label='Solution analytique' )
+plt.title(f'Solutions du problème 5.1 à n={prm3.N} et u={prm3.u} m/s (Case 3)')
+plt.xlabel('Position (m)')
+plt.ylabel('Phi')
+plt.xlim(0, prm1.L)
+plt.legend()
+
+# Erreur
+n_values = np.arange(5, 1001, 5)  
+h_values = prm3.L / n_values
+Erreur_L1 = []  
+Erreur_L2 = []
+Erreur_Linf = []
+
+for n in n_values:
+    dx3 = prm3.L / n
+    x_e = np.linspace(prm3.L / n / 2, prm3.L - prm3.L / n / 2, n)
+    
+    # Solution numérique et analytique
+    sol_num = ConvDiff1DCentré(x3, prm3, n)
+    sol_anal = analytique(x_e, prm3, n)
+    
+    # Calcul des erreurs
+    erreur_L1_value = erreur_L1(sol_num, sol_anal,dx3)
+    erreur_L2_value = erreur_L2(sol_num, sol_anal,dx3)
+    erreur_Linf_value = erreur_Linf(sol_num, sol_anal)
+    
+    Erreur_L1.append(erreur_L1_value)
+    Erreur_L2.append(erreur_L2_value)
+    Erreur_Linf.append(erreur_Linf_value)
+    
+plt.figure(2)
+plt.loglog(h_values, Erreur_L1, label="Erreur L1")
+plt.loglog(h_values, Erreur_L2, label="Erreur L2")
+plt.loglog(h_values, Erreur_Linf, label="Erreur Linfini")
+plt.xlabel("h")
+plt.ylabel("Erreur(h)")
+plt.legend()
+plt.grid(True)
+plt.title(f"Convergence de l'erreur du problème 5.1 à n={prm2.N} et u={prm2.u} m/s (Case 3)")
+plt.show()
+
+#Ordre de convergeance
+C=str(max(abs(OrdreConvergeance(np.log(h_values), np.log(Erreur_Linf)))))
+print("La convergeance de l'erreur pour le problème 5.1 (Case 3) est de :"+ C)
 #%% Problème 5.2
 # dx2=prm2.L/prm2.N
 

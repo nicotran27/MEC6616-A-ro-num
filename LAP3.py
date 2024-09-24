@@ -557,16 +557,25 @@ class Q1B():
         
 class Q2():
     def __init__(self):
+        import sympy as sp
         import numpy as np
+        import pyvista as pv
+        import pyvistaqt as pvQt
         from meshGenerator import MeshGenerator
         from meshConnectivity import MeshConnectivity
-        import matplotlib.pyplot as plt
+        from meshPlotter import MeshPlotter
+        from mesh import Mesh
+        import matplotlib.pyplot as plt 
 
+        ## test récupération nombre de faces  
         mesher = MeshGenerator()
+        plotter = MeshPlotter()
+
+
 
         def normal(xa, ya, xb, yb):
             """
-            Fonction pour renvoyer a et b du vecteur normal unitaire à une arête
+            Fonction pour renvoyer a et b du vecteur normal unitaire à une arête 
 
             Parameters
             ----------
@@ -579,18 +588,20 @@ class Q2():
             """
             dx = xb - xa
             dy = yb - ya
-
+            
             # Calcul de la longueur de l'arête (norme du vecteur)
-            Delta_A = np.sqrt(dx ** 2 + dy ** 2)
-
+            Delta_A = np.sqrt(dx**2 + dy**2)
+            
+           
             a = dy / Delta_A
             b = - dx / Delta_A
-
+            
             return a, b
 
-        def centre_element_2D(mesh_obj, i_element):
+
+        def centre_element_2D(mesh_obj,i_element):
             """
-            Fonction pour renvoyer  xmoy et ymoy centre des faces et lieu des éléments géométriques en 2D
+            Fonction pour renvoyer  xmoy et ymoy centre des faces et lieu des éléments géométriques en 2D 
 
             Parameters
             ----------
@@ -598,362 +609,402 @@ class Q2():
 
             Returns
             -------
-            xmoy et y moy
+            xmoy et y moy 
             """
-            # Récupération des données des sommets
+            # Récupération des données des sommets 
             start = mesh_obj.get_element_to_nodes_start(i_element)
-            fin = mesh_obj.get_element_to_nodes_start(i_element + 1)
-            noeuds_i_elements = mesh_obj.element_to_nodes[
-                                start:fin]  # Création des listes pour les noeuds autour d'un élément
+            fin = mesh_obj.get_element_to_nodes_start(i_element+1)
+            noeuds_i_elements = mesh_obj.element_to_nodes[start:fin] # Création des listes pour les noeuds autour d'un élément
             # Calcul du centre géométrique du triangle
-            xmoy = 0  # Initilaisation des coordonnées virtuelles de l'élément
+            xmoy = 0 # Initilaisation des coordonnées virtuelles de l'élément 
             ymoy = 0
             for i in range(len(noeuds_i_elements)):
-                x, y = mesh_obj.get_node_to_xycoord(noeuds_i_elements[i])
+                x,y = mesh_obj.get_node_to_xycoord(noeuds_i_elements[i])
                 xmoy += x
-                ymoy += y
-            xmoy = xmoy / len(noeuds_i_elements)
-            ymoy = ymoy / len(noeuds_i_elements)
-            return xmoy, ymoy
+                ymoy += y 
+            xmoy = xmoy/len(noeuds_i_elements)
+            ymoy = ymoy/len(noeuds_i_elements)
+            return xmoy,ymoy
 
-        def phi(x, y):
+        def phi(x,y):
             """
-            Fonction pour rcrééer le champ
+            Fonction pour rcrééer le champ 
 
             Parameters
             ----------
-            coordonnées x et y
+            coordonnées x et y 
 
             Returns
             -------
-            Phi, le champ
+            Phi, le champ 
             """
-            # np.sin(x)+ np.cos(y)
-            return x * 2 + y * 2
+            #np.sin(x)+ np.cos(y)
+            return  x*2 +y*2
+
 
         mesh_parameters = {'mesh_type': 'TRI',
-                           'lc': 1
+                           'lc': 10.0
                            }
         mesh_obj = mesher.rectangle([0.0, 10.0, 0.0, 10.0], mesh_parameters)
         conec = MeshConnectivity(mesh_obj)
         conec.compute_connectivity()
+        #plotter.plot_mesh(mesh_obj)
 
-        # plotter.plot_mesh(mesh_obj)
 
         def test_euler(mesh_object):
             f = mesh_obj.number_of_elements
-            a = mesh_obj.number_of_faces
+            a =mesh_obj.number_of_faces
             s = mesh_obj.number_of_nodes
             h = 0
-            if f - a + s + h == 1:
-                return True
+            if f-a+s+h ==1:
+                return True 
+            
 
-        def least_square(mesh_obj, bcdata, phi):
-
+           
+        def least_square(mesh_obj,bcdata,phi):
+            
             bc_types = [item[0] for item in bcdata]  # Extrait la première valeur de chaque tuple
             bc_numbers = [item[1] for item in bcdata]
-
-            # Création des données
+            
+            #Création des données
             number_of_faces = mesh_obj.number_of_faces
             number_of_elements = mesh_obj.number_of_elements
-
-            # Création des coordonnées des éléments
-
+            
+            # Création des coordonnées des éléments 
+            
             coordonnees_elements_x = []
             coordonnees_elements_y = []
-
+            
             voisins = []
-
+            
             f = mesh_obj.number_of_elements
-            a = mesh_obj.number_of_faces
+            a =mesh_obj.number_of_faces
             s = mesh_obj.number_of_nodes
-            bcdata = mesh_obj.get_boundary_faces_to_tag()
-
-            # Création de la matrice de calcul ATA
-
-            ATA = np.zeros((f, 2, 2))
-
-            # Création de la matrice B
-
-            B = np.zeros((f, 2))
-
+            bcdata =mesh_obj.get_boundary_faces_to_tag()
+            
+            # Création de la matrice de calcul ATA 
+            
+            ATA = np.zeros((f,2,2))
+            
+            # Création de la matrice B 
+            
+            B = np.zeros((f,2))
+            
             for i in range(number_of_elements):
+                
                 # Récupération des différents noeuds autour d'un éléments
-
+                
                 start = mesh_obj.get_element_to_nodes_start(i)
-                fin = mesh_obj.get_element_to_nodes_start(i + 1)
-                noeuds_i_elements = mesh_obj.element_to_nodes[start:fin]
-
-                # Création du centre gémoétrique des différentes formes
-
+                fin = mesh_obj.get_element_to_nodes_start(i+1)
+                noeuds_i_elements = mesh_obj.element_to_nodes[start:fin] 
+                
+                
+                # Création du centre gémoétrique des différentes formes 
+                
                 x_e, y_e = centre_element_2D(mesh_obj, i)
-
-                # Récupération dans deux listes distinctes
-
+                
+                # Récupération dans deux listes distinctes 
+                
                 coordonnees_elements_x.append(x_e)
-                coordonnees_elements_y.append(y_e)
-
-                # Parcours de l'ensemble des arrêtes pour la création des différentes matrices
-
+                coordonnees_elements_y.append(y_e)  
+                
+            # Parcours de l'ensemble des arrêtes pour la création des différentes matrices 
+            
             for i in range(number_of_faces):
                 neighbours_elements = mesh_obj.get_face_to_elements(i)
                 # Récupération des éléments voisins
                 voisins.append(neighbours_elements)
-
-                Tg, Td = neighbours_elements
-
-                if neighbours_elements[1] == -1:  # pour les faces frontières
-
+                
+                Tg,Td = neighbours_elements
+                
+                if neighbours_elements[1] == -1 : # pour les faces frontières 
+                    
                     tag = mesh_obj.get_boundary_face_to_tag(i)
                     bc_type = bc_types[tag]
-                    bc_number = bc_numbers[tag]
-
-                    if (bc_type == 'DIRICHLET'):
+                    bc_number = bc_numbers [tag]
+                    
+                    
+                    
+                    if ( bc_type == 'DIRICHLET' ) :
                         # DIRICHLET
-                        # Création du centre de l'arrête
+                        # Création du centre de l'arrête 
                         noeuds_faces = mesh_obj.get_face_to_nodes(i)
-
+                        
                         # Milieu
-
+                        
                         xa = mesh_obj.get_node_to_xcoord(noeuds_faces[0])
                         ya = mesh_obj.get_node_to_ycoord(noeuds_faces[0])
                         xb = mesh_obj.get_node_to_xcoord(noeuds_faces[1])
                         yb = mesh_obj.get_node_to_xcoord(noeuds_faces[1])
-
-                        x_milieu = (xa + xb) / 2
-                        y_milieu = (yb + ya) / 2
-
+                        
+                        
+                        x_milieu = (xa+xb)/2
+                        y_milieu = (yb+ya)/2
+                        
                         # Dx et Dy
                         xtg = coordonnees_elements_x[neighbours_elements[0]]
                         ytg = coordonnees_elements_y[neighbours_elements[0]]
-
+                        
                         dx = (xtg - x_milieu)
                         dy = (ytg - y_milieu)
-
-                        # Pour les arêtes internes
-
-                        ALS = np.zeros((2, 2))
-
+                        
+                        # Pour les arêtes internes 
+                        
+                        ALS = np.zeros((2,2))
+                        
                         # Création des différents paramèetres de la matrice 2x2
-
-                        ALS[0, 0] = dx * dx
-                        ALS[1, 0] = dx * dy
-                        ALS[0, 1] = dy * dx
-                        ALS[1, 1] = dy * dy
+                        
+                        ALS[0,0]= dx*dx
+                        ALS[1,0]= dx*dy
+                        ALS[0,1]= dy*dx
+                        ALS[1,1]= dy*dy
                         # Remplissage
-
+                        
                         ATA[Tg] += ALS
-
-                        Phi_A = phi(x_milieu, y_milieu)
-                        Phi_tg = phi(xtg, ytg)
-                        B[Tg, 0] = B[Tg, 0] + (x_milieu - xtg) * (Phi_A - Phi_tg)
-                        B[Tg, 1] = B[Tg, 1] + (y_milieu - ytg) * (Phi_A - Phi_tg)
-
-                    if (bc_type == 'NEUMANN'):
+                        
+                        Phi_A =  phi(x_milieu,y_milieu)
+                        Phi_tg = phi(xtg,ytg)
+                        
+                        B[Tg,0] = B[Tg,0] + (x_milieu - xtg) * (Phi_A - Phi_tg)
+                        B[Tg,1] = B[Tg,1] + (y_milieu - ytg) * (Phi_A - Phi_tg)
+                        
+                        
+                    if ( bc_type == 'NEUMANN' ) :
                         # Neumann
                         noeuds_faces = mesh_obj.get_face_to_nodes(i)
-
+                        
                         xa = mesh_obj.get_node_to_xcoord(noeuds_faces[0])
                         ya = mesh_obj.get_node_to_ycoord(noeuds_faces[0])
                         xb = mesh_obj.get_node_to_xcoord(noeuds_faces[1])
                         yb = mesh_obj.get_node_to_xcoord(noeuds_faces[1])
-
-                        nx, ny = normal(xa, ya, xb, yb)
-
+                        
+                        nx,ny = normal(xa,ya,xb,yb)
+                        
                         xtg = coordonnees_elements_x[neighbours_elements[0]]
-                        ytg = coordonnees_elements_y[neighbours_elements[0]]
-
-                        x_milieu = (mesh_obj.get_node_to_xcoord(noeuds_faces[1]) + mesh_obj.get_node_to_xcoord(
-                            noeuds_faces[0])) / 2
-                        y_milieu = (mesh_obj.get_node_to_ycoord(noeuds_faces[1]) + mesh_obj.get_node_to_ycoord(
-                            noeuds_faces[0])) / 2
-
-                        dx1 = ((x_milieu - xtg))
-                        dy1 = ((y_milieu - ytg))
-
-                        dx = (dx1 * nx + dy1 * ny) * nx
-                        dy = (dx1 * nx + dy1 * ny) * ny
-
+                        ytg = coordonnees_elements_y[neighbours_elements[0]] 
+                        
+                        x_milieu = ( mesh_obj.get_node_to_xcoord(noeuds_faces[1]) + mesh_obj.get_node_to_xcoord(noeuds_faces[0]))/2
+                        y_milieu = ( mesh_obj.get_node_to_ycoord(noeuds_faces[1]) + mesh_obj.get_node_to_ycoord(noeuds_faces[0]))/2
+                        
+                        dx1 =((x_milieu-xtg))
+                        dy1 = ((y_milieu-ytg))
+                        
+                        dx = (dx1*nx+dy1*ny)*nx
+                        dy = (dx1*nx + dy1*ny)*ny
+                        
                         # Matric intermédiaire
-                        ALS = np.zeros((2, 2))
-
+                        ALS = np.zeros((2,2))
+                        
                         # Création des différents paramètres de la matrice 2x2
-
-                        ALS[0, 0] = dx * dx
-                        ALS[1, 0] = ALS[0, 1] = dy * dx
-                        ALS[1, 1] = dy * dy
-
-                        # Remplissage
+                        
+                        ALS[0,0]= dx*dx
+                        ALS[1,0]= ALS[0,1]= dy*dx
+                        ALS[1,1]= dy*dy
+                        
+                        
+                        
+                        # Remplissage 
                         ATA[Tg] += ALS
-
+                        
                         xtg = coordonnees_elements_x[neighbours_elements[0]]
                         ytg = coordonnees_elements_y[neighbours_elements[0]]
-
-                        dx = ((x_milieu - xtg) * nx + (y_milieu - ytg) * ny) * nx
-                        dy = ((x_milieu - xtg) * nx + (y_milieu - ytg) * ny) * ny
-
-                        Phi_A = bc_number  # phi(x_milieu,y_milieu) # Phi milieu
+                        
+                        dx = ((x_milieu-xtg)*nx + (y_milieu-ytg)*ny)*nx
+                        dy = ((x_milieu-xtg)*nx + (y_milieu-ytg)*ny)*ny
+                        
+                        Phi_A = bc_number # phi(x_milieu,y_milieu) # Phi milieu 
                         Phi_N = bc_number
-
-                        delta_phi = ((x_milieu - xtg) * nx + (y_milieu - ytg) * ny) * Phi_N
-
-                        B[Tg, 0] = B[Tg, 0] + dx * delta_phi
-                        B[Tg, 1] = B[Tg, 1] + dy * delta_phi
-
+                        
+                        delta_phi = ((x_milieu-xtg)*nx + (y_milieu-ytg)*ny)*Phi_N
+                        
+                        B[Tg,0] = B[Tg,0] + dx * delta_phi
+                        B[Tg,1] = B[Tg,1] + dy * delta_phi
+                        
+                        
+                        
                     if (bc_type == 'LIBRE'):
-                        B[Tg, 0] = B[Tg, 0]
-                        B[Tg, 1] = B[Tg, 1]
+                       B[Tg,0] = B[Tg,0] 
+                       B[Tg,1] = B[Tg,1] 
 
-                        # Pour les arrêtes internes
-
-                if neighbours_elements[1] != -1:
-                    # Coordonnées X triangles
-
+                # Pour les arrêtes internes
+                
+                if neighbours_elements[1] != -1 :
+                    
+                    # Coordonnées X triangles 
+                    
                     xtg = coordonnees_elements_x[neighbours_elements[0]]
                     xtd = coordonnees_elements_x[neighbours_elements[1]]
-
+                    
                     # Coordonnées Y triangles
-
+                    
                     ytg = coordonnees_elements_y[neighbours_elements[0]]
                     ytd = coordonnees_elements_y[neighbours_elements[1]]
-
+                    
                     # Récupération des dx et dy pour une arrête
-
+                    
                     dx = xtg - xtd
                     dy = ytg - ytd
-
+                    
                     # Pour les arêtes internes
-
-                    ALS = np.zeros((2, 2))
-
+                    
+                    ALS = np.zeros((2,2))
+                    
                     # Création des différents paramèetres de la matrice 2x2
-
-                    ALS[0, 0] = dx * dx
-                    ALS[1, 0] = dx * dy
-                    ALS[0, 1] = dy * dx
-                    ALS[1, 1] = dy * dy
-
-                    ATA[Tg] += ALS
-                    ATA[Td] += ALS
-
-                    # Remplissage de B
-
-                    Phi_td = phi(xtd, ytd)
-                    Phi_tg = phi(xtg, ytg)
-
-                    B[Tg, 0] = B[Tg, 0] + (xtd - xtg) * (Phi_td - Phi_tg)
-                    B[Tg, 1] = B[Tg, 1] + (ytd - ytg) * (Phi_td - Phi_tg)
-                    B[Td, 0] = B[Td, 0] + (xtd - xtg) * (Phi_td - Phi_tg)
-                    B[Td, 1] = B[Td, 1] + (ytd - ytg) * (Phi_td - Phi_tg)
-
-            # Création de la matrice ATAI
-
-            ATAI = np.zeros((f, 2, 2))
-
-            # BOucle sur les triangles
-
+                    
+                    ALS[0,0]= dx*dx
+                    ALS[1,0]= dx*dy
+                    ALS[0,1]= dy*dx
+                    ALS[1,1]= dy*dy
+                    
+                    ATA[Tg]+= ALS
+                    ATA[Td]+= ALS
+                    
+                    # Remplissage de B 
+                    
+                    Phi_td = phi(xtd,ytd)
+                    Phi_tg = phi(xtg,ytg)
+                    
+                    B[Tg,0] = B[Tg,0] + (xtd-xtg) * (Phi_td -Phi_tg)
+                    B[Tg,1] = B[Tg,1] + (ytd-ytg) * (Phi_td -Phi_tg)
+                    B[Td,0] = B[Td,0] + (xtd-xtg) * (Phi_td -Phi_tg)
+                    B[Td,1] = B[Td,1] + (ytd-ytg) * (Phi_td -Phi_tg)
+                    
+            # Création de la matrice ATAI    
+            
+            ATAI = np.zeros((f,2,2))
+            
+            # BOucle sur les triangles 
+            
             for i in range(number_of_elements):
-                AL = ATA[i]  # Sélection de chaque élément
-                ALI = np.linalg.inv(AL)  # Inversion de chaque élément
-                ATAI[i] = ALI  # Ajout à la nouvelle matrice
-
-            # Création du gradient
-
-            Grad = np.zeros((f, 2))
-
-            # Résolution numérique
-
+                
+                AL = ATA[i] # Sélection de chaque élément
+                ALI = np.linalg.inv(AL) # Inversion de chaque élément
+                ATAI[i]= ALI # Ajout à la nouvelle matrice
+            
+            # Création du gradient 
+            
+            Grad =np.zeros((f,2))
+            
+            # Résolution numérique 
+            
             for i in range(number_of_elements):
-                Grad[i] = np.dot(ATAI[i], B[i])  # Multiplication des deux matrices
-
+                
+                Grad[i] = np.dot(ATAI[i],B[i]) # Multiplication des deux matrices
+                
             return Grad
 
-        bcdata = (['DIRICHLET', 0], ['DIRICHLET', 1],
-                  ['DIRICHLET', 2], ['DIRICHLET', 3])
-        print('Le gradient de chaque element dans un champ constant est de:')
-        print(least_square(mesh_obj, bcdata, phi))
+
+
+        bcdata = (['DIRICHLET', 2 ], ['DIRICHLET', 2 ],
+                  ['DIRICHLET', 2], ['DIRICHLET', 2])
+
+
 
         f = mesh_obj.number_of_elements
+        #%% Création de la fonction analytique 
 
-        # %% Création de la fonction analytique
-
-        def analytique(f, mesh_obj):
-
-            Grad = np.zeros((f, 2))
+        def analytique(f,mesh_obj):
+            
+            Grad = np.zeros((f,2))
             coordonnees_elements_x = []
             coordonnees_elements_y = []
             for i in range(f):
                 x_e, y_e = centre_element_2D(mesh_obj, i)
                 coordonnees_elements_x.append(x_e)
-                coordonnees_elements_y.append(y_e)
-                Grad[i][0] = 2
-                Grad[i][1] = 2
+                coordonnees_elements_y.append(y_e)  
+                Grad[i][0] =  2
+                Grad[i][1] = 3
             return Grad
+
+
+        #%%
 
         def surface_cellule(noeuds, mesh_obj):
             n = len(noeuds)
             surface = 0
             points = []
-
+            
             # Récupérer les coordonnées (x, y) des noeuds associés à la cellule
             for i in range(n):
                 x, y = mesh_obj.get_node_to_xycoord(noeuds[i])  # Utiliser noeuds[i] pour les bons indices
                 points.append((x, y))
-
+                
             # Calcul de la surface avec la formule du déterminant (shoelace)
             for i in range(n):
                 x1, y1 = points[i]
                 x2, y2 = points[(i + 1) % n]  # Le sommet suivant, en bouclant sur le premier point
                 surface += x1 * y2 - x2 * y1
-
+            
             return abs(surface) / 2
 
-        def erreur_L1(sol_num, sol_anal, mesh_obj):
-            erreur_x = 0
-            erreur_y = 0
-            ecart_total = 0
+        def surface_moyenne(sol_num,mesh_obj):
+            moyenne = 0
             surface_total = 0
-
+            
             for i in range(len(sol_num)):
                 # Récupération des nœuds associés à l'élément i
                 start = mesh_obj.get_element_to_nodes_start(i)
                 fin = mesh_obj.get_element_to_nodes_start(i + 1)
                 noeuds_i_elements = mesh_obj.element_to_nodes[start:fin]
-
+                
                 # Calcul de la surface de la cellule
                 taille_cellule = surface_cellule(noeuds_i_elements, mesh_obj)
+                moyenne += taille_cellule**2
+            moyenne = np.sqrt(moyenne/len(sol_num))
+            
+            return moyenne
 
+        def erreur_L2(sol_num, sol_anal, mesh_obj):
+            erreur = 0
+            surface_total = 0
+            
+            for i in range(len(sol_num)):
+                # Récupération des nœuds associés à l'élément i
+                start = mesh_obj.get_element_to_nodes_start(i)
+                fin = mesh_obj.get_element_to_nodes_start(i + 1)
+                noeuds_i_elements = mesh_obj.element_to_nodes[start:fin]
+                
+                # Calcul de la surface de la cellule
+                taille_cellule = surface_cellule(noeuds_i_elements, mesh_obj)
+                
                 # Calcul des écarts pondérés par la taille de la cellule
-                ecart_x = abs(sol_num[i][0] - sol_anal[i][0]) * taille_cellule
-                ecart_y = abs(sol_num[i][1] - sol_anal[i][1]) * taille_cellule
-
+                x = ((sol_num[i][0] - sol_anal[i][0])**2) * taille_cellule
+                y= ((sol_num[i][1] - sol_anal[i][1])**2) * taille_cellule
+                
                 surface_total += taille_cellule
-                erreur_x += ecart_x
-                erreur_y += ecart_y
-                ecart_total += ecart_x + ecart_y
-
+                
+                erreur += (x+y)
+                
+            
+            
+            erreur =np.sqrt(erreur/len(sol_anal))
+            # print(erreur)
+            
             # Optionnel : affichage pour vérifier les calculs
-            print(f"Surface totale: {surface_total}")
+            # print(f"Surface totale: {surface_total}")
+            
+            return erreur
 
-            return erreur_x, erreur_y, ecart_total
 
         def erreur_infinie(sol_num, sol_anal, mesh_obj):
             max_erreur_x = 0
             max_erreur_y = 0
-
+            
             for i in range(len(sol_num)):
                 # Calcul des écarts absolus pour chaque composante (x et y)
                 ecart_x = abs(sol_num[i][0] - sol_anal[i][0])
                 ecart_y = abs(sol_num[i][1] - sol_anal[i][1])
-
+                
                 # Mise à jour des erreurs maximales
                 max_erreur_x = max(max_erreur_x, ecart_x)
                 max_erreur_y = max(max_erreur_y, ecart_y)
-
+            
             # Calcul de la norme infinie comme le maximum entre les deux composantes
             norme_infinie = max(max_erreur_x, max_erreur_y)
-
+            
             return max_erreur_x, max_erreur_y, norme_infinie
+
+
 
         def OrdreConvergeance(x, y):
             dx = np.diff(x)
@@ -961,72 +1012,78 @@ class Q2():
             slope = dy / dx
             return slope
 
-        # %% Création du code pour les erreurs
-        def phi1(x, y):
-            a = np.exp(-x)
-            return a
+        #%% Création du code pour les erreurs
+        def phi1(x,y):
+            return x**2 + y**2
 
-        def analytique1(f, mesh_obj):
 
-            Grad = np.zeros((f, 2))
+        def analytique1(f,mesh_obj):
+            
+            Grad = np.zeros((f,2))
             coordonnees_elements_x = []
             coordonnees_elements_y = []
             for i in range(f):
                 x_e, y_e = centre_element_2D(mesh_obj, i)
                 coordonnees_elements_x.append(x_e)
-                coordonnees_elements_y.append(y_e)
-                Grad[i][0] = -np.sin(x_e)
-                Grad[i][1] = np.cos(y_e)
+                coordonnees_elements_y.append(y_e)  
+                Grad[i][0] =  2*x_e
+                Grad[i][1] =  2*y_e
             return Grad
 
-        # Création des points de difference
-        lc = 1
-        a1 = erreur_infinie(least_square(mesh_obj, bcdata, phi), analytique(f, mesh_obj), mesh_obj)
-        h1 = 1 / f
-        x1, y1, t1 = a1
-        H = [h1]
-        T = [t1]
 
-        for i in range(1, 4):
-            lc += i * 2
-            mesh_parameters2 = {'mesh_type': 'TRI',
-                                'lc': lc
-                                }
-            mesh_obj1 = mesher.rectangle([0.0, 10.0, 0.0, 10.0], mesh_parameters2)
+        # Création des points de difference  
+        lc= .5
+        n=6
+        a1= erreur_infinie(least_square(mesh_obj,bcdata,phi),analytique(f,mesh_obj),mesh_obj)
+        h1 =1/f 
+        H= []
+        T = []
+        bcdata1 = (['DIRICHLET', 2 ], ['DIRICHLET', 2 ],
+                  ['DIRICHLET', 2], ['DIRICHLET', 2])
+        lc_list=np.zeros(n)
+        for i in range(n):
+            if i==0:
+                lc_list[i]=lc
+            else:
+                lc_list[i]=lc*(i+1)/(2**(i+1))
+            
+        for i in range(n):
+            mesh_parameters2 = {'mesh_type': 'QUAD',
+                               'lc': lc_list[i]
+                               }
+            mesh_obj1= mesher.rectangle([0.0, 1.0, 0.0, 1.0], mesh_parameters2)
             conec = MeshConnectivity(mesh_obj1)
             conec.compute_connectivity()
+            
+            
+            f2 = mesh_obj1.number_of_elements
+            calcul = least_square(mesh_obj1,bcdata1,phi1)
+            normalien= analytique1(f2,mesh_obj1)
 
-            coordonnees_elements_x = []
-            coordonnees_elements_y = []
-
-            for i in range(f):
-                x_e, y_e = centre_element_2D(mesh_obj, i)
-                coordonnees_elements_x.append(x_e)
-                coordonnees_elements_y.append(y_e)
+            a2 = erreur_L2(calcul,normalien,mesh_obj1)
 
             f2 = mesh_obj1.number_of_elements
-            a2 = erreur_infinie(least_square(mesh_obj1, bcdata, phi1), analytique1(f2, mesh_obj1), mesh_obj1)
-            f2 = mesh_obj1.number_of_elements
-            h2 = 1 / f2
-            x2, y2, t2 = a2
-
+            h2 = surface_moyenne(calcul,mesh_obj1)
+            t2 = a2
+            
             H.append(h2)
             T.append(t2)
 
+           
+           
         plt.figure(2)
-        plt.loglog(H, T, '-o', label="Erreur T")
+        plt.loglog(H, T,'-o', label="Erreur T")
         plt.legend()
         plt.xlabel("h")
         plt.ylabel("Erreur(h)")
         plt.legend()
+        # plt.axis([10**-4, 10**-2, 10**-3, 10**-1])
         plt.grid(True)
         plt.title("Convergence de l'erreur ")
         plt.show()
 
-        # Ordre de convergeance
-        D = str(max(abs(OrdreConvergeance(np.log(H), np.log(T)))))
-        print("La convergeance de l'erreur pour les fonctions complexes est de :" + D)
-        print("Cependant, le code ne semble pas donner un ordre de convergeance proche de celui attendu (O^1) ")
+        #Ordre de convergeance
+        D=str(max(abs(OrdreConvergeance(np.log(H),np.log(T)))))
+        print("La convergeance de l'erreur pour les fonctions complexes est de :"+ D)
         return
-
     

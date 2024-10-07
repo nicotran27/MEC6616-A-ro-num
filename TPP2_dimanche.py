@@ -8,6 +8,8 @@ from mesh import Mesh
 from meshGenerator import MeshGenerator
 from meshConnectivity import MeshConnectivity
 from meshPlotter import MeshPlotter
+import pyvista as pv
+import pyvistaqt as pvQt
 
 class ConvectionDiffusionSolver:
     def __init__(self, x_min, x_max, y_min, y_max):
@@ -63,6 +65,7 @@ class ConvectionDiffusionSolver:
         mesh_connectivity = MeshConnectivity(self.mesh)
         mesh_connectivity.compute_connectivity()
         self.compute_mesh_properties()  # Ensure this is called after generating the mesh
+        return self.mesh
 
     def plot_mesh(self):
         plotter = MeshPlotter()
@@ -339,48 +342,100 @@ def plot_convergence(mesh_sizes, errors,L):
     plt.grid(True)
     plt.show()
     
-def main():
-    # Create an instance of the solver
-    solver = ConvectionDiffusionSolver(-1, 1, -1, 1)
+# def main():
+#     # Create an instance of the solver
+#     solver = ConvectionDiffusionSolver(-1, 1, -1, 1)
 
-    # Define parameters for the simulation
-    k_values = [1, 1/100, 1/10000]  # Corresponding to Peclet numbers [1, 100, 10000]
-    schemes = ['centered', 'upwind']
-    mesh_sizes = np.array([10,25,50,100])
-    L=2
+#     # Define parameters for the simulation
+#     k_values = [1, 1/100, 1/10000000]  # Corresponding to Peclet numbers [1, 100, 10000]
+#     schemes = ['centered', 'upwind']
+#     mesh_sizes = np.array([10,50,100])
+#     L=2
 
-    # Run convergence study
-    print("Running convergence study...")
-    errors = solver.run_convergence_study(k_values, schemes, mesh_sizes)
+#     # Run convergence study
+#     print("Running convergence study...")
+#     errors = solver.run_convergence_study(k_values, schemes, mesh_sizes)
     
-    # Plot convergence results
-    print("Plotting convergence results...")
-    plot_convergence(mesh_sizes, errors,L)
-    print("\nCalculating convergence orders...")
-    convergence_orders = solver.calculate_convergence_order(errors)
+#     # Plot convergence results
+#     print("Plotting convergence results...")
+#     plot_convergence(mesh_sizes, errors,L)
+#     print("\nCalculating convergence orders...")
+#     convergence_orders = solver.calculate_convergence_order(errors)
     
-    for scheme in convergence_orders:
-        for k in convergence_orders[scheme]:
-            print(f"\nScheme: {scheme}, Pe = {1/k:.2e}")
-            print("Mesh Size | Convergence Order")
-            print("--------------------------")
-            for mesh_size, order in convergence_orders[scheme][k]:
-                print(f"{mesh_size:9d} | {order:.4f}")
-    # Example of solution visualization and comparison for one case
-    nx = ny = 50
-    solver.generate_mesh(Nx=nx, Ny=ny)
-    solver.compute_mesh_properties()
+#     for scheme in convergence_orders:
+#         for k in convergence_orders[scheme]:
+#             print(f"\nScheme: {scheme}, Pe = {1/k:.2e}")
+#             print("Mesh Size | Convergence Order")
+#             print("--------------------------")
+#             for mesh_size, order in convergence_orders[scheme][k]:
+#                 print(f"{mesh_size:9d} | {order:.4f}")
+#     # Example of solution visualization and comparison for one case
+#     nx = ny = 50
+#     solver.generate_mesh(Nx=nx, Ny=ny)
+#     solver.compute_mesh_properties()
     
-    for k in k_values:
-        for scheme in schemes:
+#     for k in k_values:
+#         for scheme in schemes:
             
-            A, b = solver.assemble_system(k, scheme=scheme)
-            T_numerical = solver.solve_system(A, b)
-            L1_error, L2_error, Linf_error = solver.compute_error(T_numerical)
+#             A, b = solver.assemble_system(k, scheme=scheme)
+#             T_numerical = solver.solve_system(A, b)
+#             L1_error, L2_error, Linf_error = solver.compute_error(T_numerical)
             
-            solver.plot_results(T_numerical, k, scheme)
+#             solver.plot_results(T_numerical, k, scheme)
             
     
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
+mesher = MeshGenerator()
+plotter = MeshPlotter()
+# Create an instance of the solver
+solver = ConvectionDiffusionSolver(-1, 1, -1, 1)
+
+# Define parameters for the simulation
+k_values = [1, 1/100, 1/10000000]  # Corresponding to Peclet numbers [1, 100, 10000]
+schemes = ['centered', 'upwind']
+mesh_sizes = np.array([10,50,100])
+L=2
+
+# Run convergence study
+print("Running convergence study...")
+errors = solver.run_convergence_study(k_values, schemes, mesh_sizes)
+
+# Plot convergence results
+print("Plotting convergence results...")
+plot_convergence(mesh_sizes, errors,L)
+print("\nCalculating convergence orders...")
+convergence_orders = solver.calculate_convergence_order(errors)
+
+for scheme in convergence_orders:
+    for k in convergence_orders[scheme]:
+        print(f"\nScheme: {scheme}, Pe = {1/k:.2e}")
+        print("Mesh Size | Convergence Order")
+        print("--------------------------")
+        for mesh_size, order in convergence_orders[scheme][k]:
+            print(f"{mesh_size:9d} | {order:.4f}")
+# Example of solution visualization and comparison for one case
+nx = ny = 50
+solver.generate_mesh(Nx=nx, Ny=ny)
+M1=solver.generate_mesh(Nx=nx, Ny=ny)
+solver.compute_mesh_properties()
+
+for k in k_values:
+    for scheme in schemes:
+        
+        A, b = solver.assemble_system(k, scheme=scheme)
+        T_numerical = solver.solve_system(A, b)
+        L1_error, L2_error, Linf_error = solver.compute_error(T_numerical)
+        
+        solver.plot_results(T_numerical, k, scheme)
+        nodes, elements = plotter.prepare_data_for_pyvista(M1)
+        pv_mesh = pv.PolyData(nodes, elements)
+        pv_mesh['Température'] = T_numerical
+        #contours =pv_mesh.contour()
+        pl = pvQt.BackgroundPlotter()
+
+        # Tracé du champ
+        print("\nVoir le champ moyenne dans la fenêtre de PyVista \n")
+        pl.add_mesh(pv_mesh, show_edges=True, scalars="Température", cmap="RdBu")
+        #pl.add_mesh(contours, color="white")

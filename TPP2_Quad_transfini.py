@@ -139,7 +139,7 @@ class ConvectionDiffusionSolver:
             cell_centroids[i_elem] = [np.mean(x_coords), np.mean(y_coords)]
         return cell_centroids
 
-    def assemble_system(self, k, scheme='centered'):
+    def assemble_system(self, k, scheme='centré'):
         n_cells = self.mesh.get_number_of_elements()
         A = sparse.lil_matrix((n_cells, n_cells))
         b = np.zeros(n_cells)
@@ -156,7 +156,7 @@ class ConvectionDiffusionSolver:
                 velocity_dot_normal = u_face * self.face_normals[i_face, 0] + v_face * self.face_normals[i_face, 1]
                 
                 # Convection term
-                if scheme == 'centered':
+                if scheme == 'centré':
                     coeff = 0.5 * self.rho * self.Cp * velocity_dot_normal * self.face_areas[i_face]
                     A[left_cell, right_cell] -= coeff
                     A[right_cell, left_cell] += coeff
@@ -249,6 +249,7 @@ class ConvectionDiffusionSolver:
         T_cell = self.T_mms_func(cell_center[0], cell_center[1])
         T_boundary = T_cell - distance_to_boundary * dTdn
         return T_boundary
+    
     def solve_system(self, A, b):
         return spla.spsolve(A, b)
 
@@ -258,8 +259,8 @@ class ConvectionDiffusionSolver:
             x_cell, y_cell = self.cell_centroids[i_cell]
             error[i_cell] = T_numerical[i_cell] - self.T_mms_func(x_cell, y_cell)
         
-        L1_error = np.sum(np.abs(error) * self.cell_volumes) / np.sum(self.cell_volumes)
-        L2_error = np.sqrt(np.sum(error**2 * self.cell_volumes) / np.sum(self.cell_volumes))
+        L1_error = np.sum(np.abs(error) * self.cell_volumes) / (self.mesh.get_number_of_elements())
+        L2_error = np.sqrt(np.sum(error**2 * self.cell_volumes) / (self.mesh.get_number_of_elements()))
         Linf_error = np.max(np.abs(error))
         
         return L1_error, L2_error, Linf_error
@@ -291,7 +292,7 @@ class ConvectionDiffusionSolver:
         plt.figure(figsize=(10, 8))
         plt.tripcolor(tri, T_triangles)
         plt.colorbar(label='Temperature')
-        plt.title(f'Temperature distribution (k={k:.2e}, {scheme} scheme)')
+        plt.title(f'Distribution Temperature  (Pe={1/k}, {scheme} scheme)')
         plt.xlabel('x')
         plt.ylabel('y')
         plt.show()
@@ -313,25 +314,16 @@ class ConvectionDiffusionSolver:
                     errors[scheme][k].append((nx, L2_error))
         
         return errors
-    def calculate_convergence_order(self, errors):
-       convergence_orders = {scheme: {k: [] for k in errors[scheme]} for scheme in errors}
-       
-       for scheme in errors:
-           for k in errors[scheme]:
-               error_data = errors[scheme][k]
-               for i in range(0, len(error_data)):
-                   h1, e1 = error_data[i-1]
-                   h2, e2 = error_data[i]
-                   order = np.log(e1/e2) / np.log(h2/h1)
-                   convergence_orders[scheme][k].append((h2, order))
-       
-       return convergence_orders
 
+
+
+#%%
 class ConvectionDiffusionAnalyzer:
-    def __init__(self, x_min, x_max, y_min, y_max):
+    def __init__(self, x_min, x_max, y_min, y_max,mesh_sizes):
         self.solver = ConvectionDiffusionSolver(x_min, x_max, y_min, y_max)
         self.mesh = None
         self.T_mms_values = None
+        self.mesh_sizes = mesh_sizes
 
     def generate_mesh(self, nx, ny):
         self.mesh = self.solver.generate_mesh(Nx=nx, Ny=ny)
@@ -348,14 +340,15 @@ class ConvectionDiffusionAnalyzer:
                     plt.loglog(mesh_sizes1, error_values, '-o', label=f'{scheme}, Pe={1/k:.0e}')
             
             plt.xlabel('Mesh size')
-            plt.ylabel(f'{error_type} Error')
-            plt.title(f'{error_type} Error Convergence')
+            plt.ylabel(f'{error_type} Erreur')
+            plt.title(f'{error_type} Convergence')
             plt.legend()
             plt.grid(True)
         
         plt.tight_layout()
         plt.show()
-
+    
+    
     def run_convergence_study(self, k_values, schemes, mesh_sizes):
         errors = {scheme: {error_type: {k: [] for k in k_values} for error_type in ['L1', 'L2', 'Linf']} for scheme in schemes}
         
@@ -374,7 +367,32 @@ class ConvectionDiffusionAnalyzer:
                     errors[scheme]['Linf'][k].append(Linf_error)
         
         return errors
-
+    
+    def calculate_max_slope(self, mesh_sizes, errors):
+        max_slopes = {scheme: {error_type: {} for error_type in ['L1', 'L2', 'Linf']} for scheme in errors}
+        
+        for scheme in errors:
+            for error_type in errors[scheme]:
+                for k, error_values in errors[scheme][error_type].items():
+                    slopes = []
+                    for i in range(1, len(mesh_sizes)):
+                        dx = np.log(mesh_sizes[i]) - np.log(mesh_sizes[i-1])
+                        dy = np.log(error_values[i]) - np.log(error_values[i-1])
+                        slope = abs(dy / dx)
+                        slopes.append(slope)
+                    max_slopes[scheme][error_type][k] = max(slopes)
+        
+        return max_slopes
+    
+    def print_max_slopes(self, max_slopes):
+        print("\nOrdre de convergence:")
+        for scheme in max_slopes:
+            print(f"\nSchéma: {scheme}")
+            for error_type in max_slopes[scheme]:
+                print(f" Erreur {error_type} :")
+                for k, slope in max_slopes[scheme][error_type].items():
+                    print(f"   Pe={1/k:.0e}: {slope:.2f}")
+                
     def plot_results(self, T_numerical, k, scheme):
         grid = self.create_pyvista_grid(T_numerical)
         
@@ -382,7 +400,7 @@ class ConvectionDiffusionAnalyzer:
         pl.add_mesh(grid, show_edges=True, scalars="Temperature", cmap="RdBu")
         contours = grid.contour(scalars='Temperature', isosurfaces=10)
         pl.add_mesh(contours, color="white", line_width=2)
-        pl.add_text(f"Temperature Distribution (k={k}, scheme={scheme})", font_size=12)
+        pl.add_text(f"Distribution Temperature  (Pe={1/k}, scheme={scheme})", font_size=12)
         pl.show()
 
     def get_temperature_profile(self, grid, start_point, end_point):
@@ -421,7 +439,7 @@ class ConvectionDiffusionAnalyzer:
         plt.figure(figsize=(12, 8))
         
         for k, scheme, (distance, temperature) in profiles:
-            plt.plot(distance, temperature, label=f'k={k:.0e}, {scheme}')
+            plt.plot(distance, temperature, label=f'Pe={1/k}, {scheme}')
         
         plt.plot(analytical_profile[0], analytical_profile[1], 'k--', label='Analytical')
         
@@ -462,10 +480,10 @@ class ConvectionDiffusionAnalyzer:
         z_min, z_max = 0, 0
         L=x_max-x_min
         cross_sections = [
-            ("Vertical at x=0", [0, y_min, z_min], [0, y_max, z_max], "Distance along y"),
-            ("Vertical at x=0.5", [0.5, y_min, z_min], [0.5, y_max, z_max], "Distance along y"),
-            ("Horizontal at y=0", [x_min, 0, z_min], [x_max, 0, z_max], "Distance along x"),
-            ("Horizontal at y=0.5", [x_min, 0.5, z_min], [x_max, 0.5, z_max], "Distance along x")
+            ("Coupe Verticale à x=0", [0, y_min, z_min], [0, y_max, z_max], "Distance  y"),
+            ("Coupe Verticale à x=0.5", [0.5, y_min, z_min], [0.5, y_max, z_max], "Distance  y"),
+            ("Coupe Horizontale à y=0", [x_min, 0, z_min], [x_max, 0, z_max], "Distance  x"),
+            ("Coupe Horizontale à y=0.5", [x_min, 0.5, z_min], [x_max, 0.5, z_max], "Distance  x")
         ]
 
         for k in k_values:
@@ -488,15 +506,21 @@ class ConvectionDiffusionAnalyzer:
             grid_analytical = self.create_pyvista_grid(self.T_mms_values)
             analytical_profile = self.get_temperature_profile(grid_analytical, start_point, end_point)
             
-            self.plot_cross_section_profiles(profiles, analytical_profile, f"Temperature Distribution - {section_name}", xlabel)
+            self.plot_cross_section_profiles(profiles, analytical_profile, f"Distribution Temperature  - {section_name}", xlabel)
         errors = self.run_convergence_study(k_values, schemes, mesh_sizes)
-        self.plot_convergence(mesh_sizes, errors,L)
+        max_slopes = self.calculate_max_slope(mesh_sizes, errors)
+        self.plot_convergence(mesh_sizes, errors, L)
+        self.print_max_slopes(max_slopes)
+
+                    
+#%%
 def main():
-    analyzer = ConvectionDiffusionAnalyzer(-1, 1, -1, 1)
+    mesh_sizes = np.array([10, 20, 40, 80]) 
+    analyzer = ConvectionDiffusionAnalyzer(-1, 1, -1, 1,mesh_sizes)
     k_values = [1, 1/100, 1/10000000]
-    schemes = ['centered', 'upwind']
+    schemes = ['centré', 'upwind']
     nx = ny = 50
-    mesh_sizes = np.array([10, 20, 40, 80])
+    
     
     analyzer.run_analysis(k_values, schemes, nx, ny, mesh_sizes)
 

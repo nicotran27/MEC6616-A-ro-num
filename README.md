@@ -4,3 +4,4 @@
 - LAP3 : Structure de données 2D - Quadrilatères et Triangles
 - TPP1 : 2D HT - Quadrilatères et Triangles
 - TPP2 : 2D HT Conv+Diff - Quadrilatères et Triangles
+- LAP4 : Équations de momentum

@@ -8,6 +8,7 @@ from mesh import Mesh
 from meshGenerator import MeshGenerator
 from meshConnectivity import MeshConnectivity
 from meshPlotter import MeshPlotter
+from typing import Tuple
 
 class CouetteFlow:
     def __init__(self, x_min, x_max, y_min, y_max):
@@ -331,7 +332,100 @@ class CouetteFlow:
             pl.show()
         
 
+class RotatedCouetteFlow(CouetteFlow):
+    def __init__(self, x_min, x_max, y_min, y_max, theta_degrees):
+        super().__init__(x_min, x_max, y_min, y_max)
+        self.theta = np.radians(theta_degrees)
+        self.rotation_matrix = np.array([
+            [np.cos(self.theta), -np.sin(self.theta)],
+            [np.sin(self.theta), np.cos(self.theta)]
+        ])
+        self.rotation_matrix_inverse = self.rotation_matrix.T
+        
+    def rotate_coordinates(self, x: float, y: float) -> Tuple[float, float]:
+        """Transform coordinates from rotated to original frame"""
+        coords = np.array([x, y])
+        original_coords = self.rotation_matrix_inverse @ coords
+        return original_coords[0], original_coords[1]
+    
+    def rotate_velocities(self, u: float, v: float) -> Tuple[float, float]:
+        """Transform velocities from original to rotated frame"""
+        velocities = np.array([u, v])
+        rotated_velocities = self.rotation_matrix @ velocities
+        return rotated_velocities[0], rotated_velocities[1]
+    
+    def rotate_gradients(self, dx: float, dy: float) -> Tuple[float, float]:
+        """Transform pressure gradients from original to rotated frame"""
+        gradients = np.array([dx, dy])
+        rotated_gradients = self.rotation_matrix @ gradients
+        return rotated_gradients[0], rotated_gradients[1]
+    
+    def analytical_solution(self, x: float, y: float, P: float) -> Tuple[float, float]:
+        """Compute analytical solution in rotated frame"""
+        # Transform coordinates to original frame
+        x_orig, y_orig = self.rotate_coordinates(x, y)
+        
+        # Compute solution in original frame
+        u_orig, v_orig = super().analytical_solution(x_orig, y_orig, P)
+        
+        # Transform velocities to rotated frame
+        return self.rotate_velocities(u_orig, v_orig)
+    
+    def assemble_system(self, P: float, u: np.ndarray, v: np.ndarray, scheme='centered'):
+        n_cells = self.mesh.get_number_of_elements()
+        A = sparse.lil_matrix((2*n_cells, 2*n_cells))
+        b = np.zeros(2*n_cells)
+        
+        for i_face in range(self.mesh.get_number_of_faces()):
+            left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
+            
+            if right_cell != -1:  # Internal face
+                self.add_internal_face_contribution(A, u, v, left_cell, right_cell, i_face, scheme)
+            else:  # Boundary face
+                self.add_boundary_face_contribution(A, b, left_cell, i_face, P)
+        
+        # Transform pressure gradient source terms to rotated frame
+        Sx_rot, Sy_rot = self.rotate_gradients(-2*P, 0)
+        b[:n_cells] += Sx_rot * self.cell_volumes  # Rotated Sx
+        b[n_cells:] += Sy_rot * self.cell_volumes  # Rotated Sy
+        
+        return A.tocsr(), b
 
+def run_rotated_analysis(P_values, schemes, mesh_sizes,theta_degrees):
+    
+    # Create rotated Couette flow solver
+    rotated_couette_flow = RotatedCouetteFlow(0, 1, 0, 1, theta_degrees)
+    
+    # Run analysis and plot results
+    results = rotated_couette_flow.run_analysis(P_values, schemes, mesh_sizes)
+    rotated_couette_flow.plot_results(results)
+    
+    # Calculate convergence order
+    error_types = ['L1_u', 'L2_u', 'Linf_u']
+    plt.figure(figsize=(10, 6))
+   
+    for P in P_values:
+        for scheme in schemes:
+            for error_type in error_types:
+                errors = [result['errors'][error_type] for result in results 
+                          if result['P'] == P and result['scheme'] == scheme]
+                h = [result['lc'] for result in results 
+                      if result['P'] == P and result['scheme'] == scheme]
+                
+                plt.loglog(h, errors, 'o-', 
+                          label=f'{error_type}, P={P}, {scheme}, θ={theta_degrees}°')
+                
+                if len(errors) > 1:
+                    order = np.log(errors[-2] / errors[-1]) / np.log(h[-2] / h[-1])
+                    print(f"Ordre de Convergence {error_type} pour P={P}, "
+                          f"schéma={scheme}, θ={theta_degrees}°: {order:.2f}")
+    
+    plt.xlabel('Taille des éléments (h)')
+    plt.ylabel('Erreur')
+    plt.title('Comparaison des erreurs L1, L2, et Linf (Cas Tourné)')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 def run_analysis_and_plot(flow_solver, P_values, schemes, mesh_sizes):
     results = flow_solver.run_analysis(P_values, schemes, mesh_sizes)
@@ -361,9 +455,12 @@ def main():
     P_values = [0, 1, -3]
     schemes = ['centered']
     lc_values = [0.1, 0.05, 0.025]
-
+    theta=45
+    
     classic_couette_flow = CouetteFlow(0, 1, 0, 1)
     run_analysis_and_plot(classic_couette_flow, P_values, schemes, lc_values)
+    run_rotated_analysis( P_values, schemes, lc_values,theta)
+
 
 if __name__ == "__main__":
     main()

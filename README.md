@@ -5,4 +5,4 @@
 - TPP1 : 2D HT - Quadrilatères et Triangles
 - TPP2 : 2D HT Conv+Diff - Quadrilatères et Triangles
 - LAP4 : Équations de momentum
-- LAP% : Methode de Rhie-Chow
+- LAP5 : Methode de Rhie-Chow

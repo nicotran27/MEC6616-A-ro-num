@@ -241,102 +241,19 @@ class CouetteFlow:
             b[left_cell] += diff_coeff * u_boundary
             b[n_cells + left_cell] += diff_coeff * v_boundary
     
-    def Rhie_Chow(self, P: float = 0) -> np.ndarray:
+    def _least_squares_gradient(self, field_values: np.ndarray) -> np.ndarray:
         """
-        Implémentation corrigée de l'interpolation de vitesse de Rhie-Chow.
+        Calcule les gradients en utilisant la méthode des moindres carrés pondérés.
         
         Paramètres:
         -----------
-        P : float
-            Paramètre de gradient de pression
+        field_values : np.ndarray
+            Valeurs du champ aux centres des cellules
             
         Retourne:
         --------
         np.ndarray
-            Vitesses aux faces (composante normale)
-        """
-        # Récupération des coefficients de l'équation de quantité de mouvement
-        A, b = self.assemble_momentum_system(P, np.zeros(self.mesh.get_number_of_elements()), 
-                                           np.zeros(self.mesh.get_number_of_elements()))
-        aP = A.diagonal()[:self.mesh.get_number_of_elements()]
-        
-        # Calcul du champ de pression
-        P_field = np.zeros(self.mesh.get_number_of_elements())
-        for i_elem in range(self.mesh.get_number_of_elements()):
-            x, y = self.cell_centers[i_elem]
-            P_field[i_elem] = -P * x  # Champ de pression linéaire
-        
-        # Calcul des vitesses aux centres des cellules
-        solution = spla.spsolve(A, b)
-        u = solution[:self.mesh.get_number_of_elements()]
-        v = solution[self.mesh.get_number_of_elements():]
-        
-        # Calcul du gradient de pression analytique
-        grad_P = np.zeros((self.mesh.get_number_of_elements(), 2))
-        if P != 0:
-            grad_P[:, 0] = -P  # dP/dx = -P
-            grad_P[:, 1] = 0   # dP/dy = 0
-        
-        # Initialisation du tableau des vitesses aux faces
-        U_face = np.zeros(self.mesh.get_number_of_faces())
-        
-        for i_face in range(self.mesh.get_number_of_faces()):
-            left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
-            nx, ny = self.normal_face[i_face]
-            
-            if right_cell != -1:  # Face interne
-                # Interpolation simple de la vitesse
-                u_avg = 0.5 * (u[left_cell] + u[right_cell])
-                v_avg = 0.5 * (v[left_cell] + v[right_cell])
-                U_avg = u_avg * nx + v_avg * ny
-                
-                if P != 0:  # Application de la correction de pression uniquement si gradient non nul
-                    # Termes de correction de pression
-                    dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
-                    distance = np.linalg.norm(dx)
-                    
-                    # Coefficient avec moyenne pondérée par le volume
-                    vol_aP_avg = 0.5 * (self.cell_volumes[left_cell]/aP[left_cell] + 
-                                       self.cell_volumes[right_cell]/aP[right_cell])
-                    
-                    # Termes de gradient de pression
-                    dP = (P_field[right_cell] - P_field[left_cell]) / distance
-                    grad_P_avg = 0.5 * (
-                        (grad_P[left_cell, 0] * nx + grad_P[left_cell, 1] * ny) +
-                        (grad_P[right_cell, 0] * nx + grad_P[right_cell, 1] * ny)
-                    )
-                    
-                    # Ajout de la correction de pression
-                    U_face[i_face] = U_avg - vol_aP_avg * (dP - grad_P_avg)
-                else:
-                    U_face[i_face] = U_avg
-            else:  # Face frontière
-                x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
-                                        for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
-                
-                if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max):
-                    # Condition limite de Dirichlet - utilisation de la vitesse exacte
-                    u_bound, v_bound = self.analytical_solution(x_face, y_face, P)
-                    U_face[i_face] = u_bound * nx + v_bound * ny
-                else:
-                    # Condition limite de Neumann - interpolation unilatérale
-                    U_face[i_face] = u[left_cell] * nx + v[left_cell] * ny
-        
-        return U_face
-    
-    def _least_squares_gradient(self, func) -> np.ndarray:
-        """
-        Calcul des gradients par la méthode des moindres carrés pondérés.
-        
-        Paramètres:
-        -----------
-        func : callable
-            Fonction dont on veut calculer le gradient
-            
-        Retourne:
-        --------
-        np.ndarray
-            Gradients aux centres des cellules
+            Gradients aux centres des cellules (forme: n_elements x 2)
         """
         n_elements = self.mesh.get_number_of_elements()
         ATA = np.zeros((n_elements, 2, 2))
@@ -347,70 +264,196 @@ class CouetteFlow:
             left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
             
             if right_cell != -1:  # Face interne
-                # Récupération des centres des cellules
-                x1, y1 = self.cell_centers[left_cell]
-                x2, y2 = self.cell_centers[right_cell]
+                # Vecteur entre les centres des cellules
+                dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
+                distance = np.linalg.norm(dx)
                 
-                # Vecteur entre les centres
-                dx = x2 - x1
-                dy = y2 - y1
-                distance = np.sqrt(dx*dx + dy*dy)
-                
-                # Pondération basée sur l'inverse de la distance
+                # Poids basé sur l'inverse de la distance
                 weight = 1.0 / distance
                 
-                # Calcul des différences pondérées
-                A_local = weight * np.array([[dx*dx, dx*dy],
-                                           [dx*dy, dy*dy]])
+                # Matrice de contribution locale
+                A_local = weight * np.outer(dx, dx)
                 
-                # Valeurs de la fonction aux centres
-                f1 = func(x1, y1)
-                f2 = func(x2, y2)
-                df = f2 - f1
-                
-                # Ajout des contributions
+                # Ajouter les contributions aux deux cellules
                 ATA[left_cell] += A_local
                 ATA[right_cell] += A_local
                 
-                B[left_cell] += weight * np.array([dx * df, dy * df])
-                B[right_cell] += weight * np.array([dx * df, dy * df])
+                # Différence des valeurs du champ
+                df = field_values[right_cell] - field_values[left_cell]
+                
+                # Ajouter les contributions pondérées à B
+                B[left_cell] += weight * df * dx
+                B[right_cell] += weight * df * dx
                 
             else:  # Face frontière
-                # Traitement spécial pour les faces frontières
-                nodes = self.mesh.get_face_to_nodes(i_face)
-                x_face = 0.5 * (self.mesh.get_node_to_xcoord(nodes[0]) + 
-                               self.mesh.get_node_to_xcoord(nodes[1]))
-                y_face = 0.5 * (self.mesh.get_node_to_ycoord(nodes[0]) + 
-                               self.mesh.get_node_to_ycoord(nodes[1]))
+                # Obtenir les coordonnées du centre de la face
+                face_nodes = self.mesh.get_face_to_nodes(i_face)
+                x_face = 0.5 * (self.mesh.get_node_to_xcoord(face_nodes[0]) + 
+                               self.mesh.get_node_to_xcoord(face_nodes[1]))
+                y_face = 0.5 * (self.mesh.get_node_to_ycoord(face_nodes[0]) + 
+                               self.mesh.get_node_to_ycoord(face_nodes[1]))
                 
-                x1, y1 = self.cell_centers[left_cell]
-                dx = x_face - x1
-                dy = y_face - y1
-                distance = np.sqrt(dx*dx + dy*dy)
+                # Vecteur du centre de la cellule au centre de la face
+                dx = np.array([x_face, y_face]) - self.cell_centers[left_cell]
+                distance = np.linalg.norm(dx)
                 
                 weight = 1.0 / distance
-                A_local = weight * np.array([[dx*dx, dx*dy],
-                                           [dx*dy, dy*dy]])
+                A_local = weight * np.outer(dx, dx)
                 
-                f1 = func(x1, y1)
-                f2 = func(x_face, y_face)
-                df = f2 - f1
-                
+                # Ajouter la contribution à la cellule
                 ATA[left_cell] += A_local
-                B[left_cell] += weight * np.array([dx * df, dy * df])
+                
+                # Pour le gradient de pression, on utilise un gradient nul aux frontières
+                face_value = field_values[left_cell]
+                df = face_value - field_values[left_cell]
+                B[left_cell] += weight * df * dx
         
-        # Calcul des gradients avec vérification de stabilité
-        grad = np.zeros((n_elements, 2))
+        # Calculer les gradients
+        gradients = np.zeros((n_elements, 2))
         for i in range(n_elements):
             try:
-                # Ajout d'une petite régularisation pour éviter les matrices singulières
+                # Ajouter une petite régularisation pour éviter les matrices singulières
                 ATA[i] += 1e-10 * np.eye(2)
-                grad[i] = np.linalg.solve(ATA[i], B[i])
+                gradients[i] = np.linalg.solve(ATA[i], B[i])
             except np.linalg.LinAlgError:
                 print(f"Attention: Matrice singulière à l'élément {i}")
-                grad[i] = B[i] / (ATA[i, 0, 0] + 1e-10)
+                gradients[i] = B[i] / (np.trace(ATA[i]) + 1e-10)
         
-        return grad
+        return gradients
+    
+    def relaxation(self, u_new: np.ndarray, v_new: np.ndarray, 
+              u_prec: np.ndarray, v_prec: np.ndarray, 
+              alpha: float = 1) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Applique une sous-relaxation sur les champs de vitesse.
+        
+        Paramètres:
+        -----------
+        u_new, v_new : np.ndarray
+            Composantes de vitesse nouvellement calculées
+        u_prec, v_prec : np.ndarray
+            Composantes de vitesse de l'itération précédente
+        alpha : float, optional (default=0.7)
+            Facteur de sous-relaxation (entre 0 et 1)
+            
+        Retourne:
+        --------
+        Tuple[np.ndarray, np.ndarray]
+            Composantes de vitesse sous-relaxées (u_final, v_final)
+        """
+        u_final = alpha * u_new + (1 - alpha) * u_prec
+        v_final = alpha * v_new + (1 - alpha) * v_prec
+        return u_final, v_final
+
+
+    def Rhie_Chow(self, P: float = 0, max_iterations: int = 1000, 
+              tolerance: float = 1e-6, alpha: float = 1) -> np.ndarray:
+        """
+        Interpolation de Rhie-Chow modifiée avec sous-relaxation.
+        
+        Paramètres:
+        -----------
+        P : float, optional (default=0)
+            Paramètre de pression
+        max_iterations : int, optional (default=1000)
+            Nombre maximum d'itérations
+        tolerance : float, optional (default=1e-6)
+            Critère de convergence
+        alpha : float, optional (default=0.7)
+            Facteur de sous-relaxation
+                
+        Retourne:
+        --------
+        np.ndarray
+            Vitesses normales aux faces
+        """
+        # Initialisation des champs de vitesse
+        n_elements = self.mesh.get_number_of_elements()
+        u = np.zeros(n_elements)
+        v = np.zeros(n_elements)
+        
+        # Boucle principale d'itération
+        for iteration in range(max_iterations):
+            # Obtenir les coefficients de l'équation de quantité de mouvement
+            A, b = self.assemble_momentum_system(P, u, v)
+            aP = A.diagonal()[:n_elements]
+            
+            # Calculer la nouvelle solution
+            solution = spla.spsolve(A, b)
+            u_new = solution[:n_elements]
+            v_new = solution[n_elements:]
+            
+            # Appliquer la sous-relaxation
+            u, v = self.relaxation(u_new, v_new, u, v, alpha)
+            
+            # Vérifier la convergence
+            if (np.max(np.abs(u_new - u)) < tolerance and 
+                np.max(np.abs(v_new - v)) < tolerance):
+                print(f"Convergence atteinte après {iteration + 1} itérations")
+                break
+                
+            if iteration == max_iterations - 1:
+                print("Attention: Nombre maximum d'itérations atteint sans convergence")
+        
+        # Calculer le champ de pression
+        P_field = np.zeros(n_elements)
+        for i_elem in range(n_elements):
+            x, y = self.cell_centers[i_elem]
+            P_field[i_elem] = -P * x  # Champ de pression linéaire
+        
+        # Calculer les gradients de pression en utilisant les moindres carrés
+        grad_P = self._least_squares_gradient(P_field)
+        
+        # Initialiser le tableau des vitesses aux faces
+        U_face = np.zeros(self.mesh.get_number_of_faces())
+        
+        # Calculer les vitesses aux faces
+        for i_face in range(self.mesh.get_number_of_faces()):
+            left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
+            nx, ny = self.normal_face[i_face]
+            
+            if right_cell != -1:  # Face interne
+                # Interpolation simple de la vitesse
+                u_avg = 0.5 * (u[left_cell] + u[right_cell])
+                v_avg = 0.5 * (v[left_cell] + v[right_cell])
+                U_avg = u_avg * nx + v_avg * ny
+                
+                if P != 0:  # Appliquer la correction de pression uniquement si le gradient existe
+                    # Calculer la distance entre les centres des cellules
+                    dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
+                    distance = np.linalg.norm(dx)
+                    
+                    # Coefficient pondéré par le volume
+                    vol_aP_avg = 0.5 * (self.cell_volumes[left_cell]/aP[left_cell] + 
+                                       self.cell_volumes[right_cell]/aP[right_cell])
+                    
+                    # Termes de gradient de pression utilisant les gradients par moindres carrés
+                    dP = (P_field[right_cell] - P_field[left_cell]) / distance
+                    grad_P_avg = 0.5 * (
+                        (grad_P[left_cell, 0] * nx + grad_P[left_cell, 1] * ny) +
+                        (grad_P[right_cell, 0] * nx + grad_P[right_cell, 1] * ny)
+                    )
+                    
+                    # Ajouter la correction de pression
+                    U_face[i_face] = U_avg - vol_aP_avg * (dP - grad_P_avg)
+                else:
+                    U_face[i_face] = U_avg
+                    
+            else:  # Face frontière
+                # Obtenir les coordonnées du centre de la face
+                x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
+                                        for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
+                
+                if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max):
+                    # Condition limite de Dirichlet - utiliser la vitesse exacte
+                    u_bound, v_bound = self.analytical_solution(x_face, y_face, P)
+                    U_face[i_face] = u_bound * nx + v_bound * ny
+                else:
+                    # Condition limite de Neumann - utiliser les valeurs au centre de la cellule
+                    U_face[i_face] = u[left_cell] * nx + v[left_cell] * ny
+        
+        return U_face
+
     
     def calculate_simple_interpolation(self, P: float) -> np.ndarray:
         """
@@ -472,7 +515,7 @@ class CouetteFlow:
        
        tolerances = {
            0: 1e-10,  # Tolérance  pour P=0
-           3: 1e-3    # Tolérance  pour P=3
+           3: 1e-10    # Tolérance  pour P=3
        }
        
        results = {}

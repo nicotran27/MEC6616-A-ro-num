@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Nov  3 21:25:18 2024
+
+@author: mathisturquet
+"""
+
 import numpy as np
 import scipy.sparse as sparse
 import scipy.sparse.linalg as spla
@@ -231,7 +239,7 @@ class CouetteFlow:
         x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
                                  for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
         
-        if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max):
+        if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max) or np.isclose(x_face, self.x_min) :
             # Dirichlet
             u_boundary, v_boundary = self.analytical_solution(x_face, y_face, P)
             
@@ -369,8 +377,8 @@ class CouetteFlow:
         """
         # Initialisation des champs de vitesse
         n_elements = self.mesh.get_number_of_elements()
-        u = self.u_lap_6()
-        
+        #u = self.u_lap_6()
+        u = np.zeros(n_elements)
         v = np.zeros(n_elements)
         
         # Boucle principale d'itération
@@ -397,7 +405,8 @@ class CouetteFlow:
                 print("Attention: Nombre maximum d'itérations atteint sans convergence")
     
        
-        
+        #print("u : " ,u)
+        #print("v : " ,v)
         # Calculer le champ de pression
         P_field = np.zeros(n_elements)
         for i_elem in range(n_elements):
@@ -415,17 +424,20 @@ class CouetteFlow:
         for i_face in range(self.mesh.get_number_of_faces()):
             left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
             nx, ny = self.normal_face[i_face]
-            
+           
             if right_cell != -1:  # Face interne
                 # Interpolation simple de la vitesse
                 u_avg = 0.5 * (u[left_cell] + u[right_cell])
                 v_avg = 0.5 * (v[left_cell] + v[right_cell])
                 U_avg = u_avg * nx + v_avg * ny
+                #print("u_avg", u_avg)
+                #print("nx",nx)
                 
                 if P != 0:  # Appliquer la correction de pression uniquement si le gradient existe
                     # Calculer la distance entre les centres des cellules
                     dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
                     distance = np.linalg.norm(dx)
+                    #print("distance : ", distance)
                     
                     # Coefficient pondéré par le volume
                     vol_aP_avg = 0.5 * (self.cell_volumes[left_cell]/aP[left_cell] + 
@@ -448,17 +460,23 @@ class CouetteFlow:
                 x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
                                         for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
                 
-                if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max):
+                if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max) or np.isclose(x_face,self.x_min) or np.isclose(x_face,self.x_max):
                     # Condition limite de Dirichlet - utiliser la vitesse exacte
                     u_bound, v_bound = self.analytical_solution(x_face, y_face, P)
                     U_face[i_face] = u_bound * nx + v_bound * ny
+                    #print("u_limit : ",u_bound)
+                    #print(nx)
+                    #print("Ubound", U_face[i_face])
                 else:
                     # Condition limite de Neumann - utiliser les valeurs au centre de la cellule
                     U_face[i_face] = u[left_cell] * nx + v[left_cell] * ny
+                    
+                    
+        #print("U_face", U_face)
         
-        return U_face
+        return U_face,aP
     
-    def Correction_pression(self, U_face,u,v,P: float = 0, max_iterations: int = 1000, 
+    def Correction_pression(self, U_face,aP,P: float = 0, max_iterations: int = 1000, 
               tolerance: float = 1e-6, alpha: float = 1) -> np.ndarray:
         """
         Interpolation de Rhie-Chow modifiée avec sous-relaxation.
@@ -482,12 +500,6 @@ class CouetteFlow:
         # Initialisation des champs de vitesse
         n_elements = self.mesh.get_number_of_elements()
         n_faces = self.mesh.get_number_of_faces()
-    
-        
-       
-        
-        A, b = self.assemble_momentum_system(P, u, v)
-        aP = A.diagonal()[:n_elements]
         
         # Création  des matrices B et NP 
         
@@ -497,7 +509,7 @@ class CouetteFlow:
         
         for i_face in range(n_faces):
             left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
-            dfi =1 
+           
             ap = aP[left_cell]
             aa = aP[right_cell]
             
@@ -510,8 +522,8 @@ class CouetteFlow:
             dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
             distance = np.linalg.norm(dx)
             
-            vol_aP_avg = 0.5 * (self.cell_volumes[left_cell]/aP[left_cell] + 
-                               self.cell_volumes[right_cell]/aP[right_cell])
+            vol_aP_avg = 0.5 * (self.cell_volumes[left_cell]/ap + 
+                               self.cell_volumes[right_cell]/aa)
             
             dfi = vol_aP_avg/distance
             
@@ -523,9 +535,11 @@ class CouetteFlow:
                 NP[left_cell ,right_cell]=   NP[left_cell,right_cell] - self.rho *dfi * delta_Ai
                 NP[right_cell,right_cell]=   NP[right_cell,right_cell] + self.rho *dfi * delta_Ai
                 NP[right_cell,left_cell]=   NP[right_cell,left_cell] - self.rho *dfi * delta_Ai
+                #print("NP",NP)
                 
-                B[left_cell]= B[left_cell] - self.rho* U_face[i_face]
-                B[right_cell]= B[right_cell] + self.rho* U_face[i_face]# Tout va bien jusque là 
+                B[left_cell]= B[left_cell] - self.rho* U_face[i_face]*delta_Ai
+                B[right_cell]= B[right_cell] + self.rho* U_face[i_face]*delta_Ai# Tout va bien jusque là
+                #print("B",B)
                
             if right_cell == -1:  # Face interne
                 x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
@@ -533,15 +547,21 @@ class CouetteFlow:
                 
                 if np.isclose(x_face, self.x_min) or np.isclose(y_face, self.y_max)  or np.isclose(y_face, self.y_min):
                     # Condition limite de Dirichlet - utiliser la vitesse exacte
-                    B[left_cell]= B[left_cell] - self.rho* U_face[i_face]
+                    B[left_cell]= B[left_cell] - self.rho* U_face[i_face]*delta_Ai
                 
-                else : 
+                elif np.isclose(x_face, self.x_max) :
+                    dx = (x_face,y_face) - self.cell_centers[left_cell]
+                    distance = np.linalg.norm(dx)
+                    dfi = self.cell_volumes[left_cell]/ap/distance
                     NP[left_cell,left_cell]=   NP[left_cell,left_cell] + self.rho * dfi * delta_Ai
-                    B[left_cell]= B[left_cell] - self.rho* U_face[i_face]
+                    #print("NP[left_cell,left_cell]",NP[left_cell,left_cell])
+                    B[left_cell]= B[left_cell] - self.rho* U_face[i_face]*delta_Ai
         
-        solution = spla.spsolve(A, -b)
+        solution = spla.spsolve(NP, -B)
+        #print("Solution : ", solution)
         
         # Début de la correction 
+        U_final =  np.zeros((n_faces,1))
         for i_face  in range(n_faces):
             left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
             dfi =1 
@@ -554,20 +574,28 @@ class CouetteFlow:
             xb,yb = self.mesh.get_node_to_xycoord(nodes[1])
             delta_Ai = ((xb-xa)**2+(yb-ya)**2)**(1/2)
             
-            dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
-            distance = np.linalg.norm(dx)
+            
             
             vol_aP_avg = 0.5 * (self.cell_volumes[left_cell]/aP[left_cell] + 
                                self.cell_volumes[right_cell]/aP[right_cell])
+            # Reset le controle de volume pour les conditions limites 
             
-            dfi = vol_aP_avg/distance
-            U_final =  np.zeros((n_faces,1))
+            #U_final =  np.zeros((n_faces,1))
             
             if right_cell != -1:  # Face interne
-                U_final[i_face] = (solution[left_cell]-solution[right_cell])*dfi + U_face[i_face]
+                dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
+                distance = np.linalg.norm(dx)
+                dfi = vol_aP_avg/distance
+                U_final[i_face] = ((solution[left_cell]-solution[right_cell])*dfi + U_face[i_face])
                 
-            if right_cell == -1:  # Face interne
-                U_final[i_face] = U_face[i_face] + dfi*(solution[left_cell])
+            if right_cell == -1:  # Face limites
+                x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
+                                        for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
+                dx = (x_face,y_face) - self.cell_centers[left_cell]
+                distance = np.linalg.norm(dx)
+                dfi = vol_aP_avg/distance
+                if np.isclose(x_face, self.x_max):# Faces de sortie 
+                    U_final[i_face] = -(U_face[i_face] + dfi*(solution[left_cell]))
                 
         
         return solution, U_final 
@@ -662,24 +690,13 @@ class CouetteFlow:
                 divergence_face_i += self.rho*U_face[i_face]*delta_Ai
                 #print( self.rho*U_face[i_face]*delta_Ai)
                 
-            divergence[i_elem] = divergence_face_i
+            divergence[i_elem] = abs(divergence_face_i)
             #print("Calcul" , divergence_face_i)
             
             
         return divergence
     
-    def test_correction_pression(self):
-        test_cases = {
-            'mesh_types': ['TRI', 'QUAD'],
-            'P_values': [0],
-            'nx': 8,
-            'ny': 8 }
-        for mesh_type in test_cases['mesh_types']:
-            for P in test_cases['P_values']:
-                print(f"\nTest correction pression  avec maillage {mesh_type} et P={P}")
-                # Génération du maillage et calcul des vitesses
-                self.generate_mesh(mesh_type=mesh_type, lc=1/test_cases['nx'])
-                U_RC = self.Rhie_Chow(P)
+
                 
                 
     
@@ -693,7 +710,7 @@ class CouetteFlow:
             x_e,y_e = cell_centers[i_elem]
             
             u[i_elem] = 10-x_e
-            print(x_e,u[i_elem])
+            
             
         return u
       
@@ -763,7 +780,7 @@ class VelocityFieldPlotter:
             nx, ny = self.solver.normal_face[i_face]
             velocity = U_face[i_face]
             
-            scale = 0.5
+            scale = 0.2
             dx = velocity * nx * scale
             dy = velocity * ny * scale
             
@@ -786,7 +803,7 @@ class VelocityFieldPlotter:
                 x, y = self.solver.mesh.get_node_to_xycoord(node)
                 xy_coords.append([x, y])
             patches.append(plt.Polygon(xy_coords))
-            p_values.append(P_prime[i_elem])
+            p_values.append(abs(P_prime[i_elem]))
         
         # Create collection and add to plot
         p_collection = matplotlib.collections.PatchCollection(patches)
@@ -816,28 +833,30 @@ def main():
     flow = CouetteFlow(0, 10, 0, 10)
     
     # Test different mesh configurations
-    mesh_types = ['QUAD', 'TRI']
-    mesh_sizes = [(2, 2), (5, 5), (8, 8)]  # Different (Nx, Ny) combinations
+    mesh_types = [ "QUAD",'TRI']
+    mesh_sizes = [10]  # Different (Nx, Ny) combinations
     
     for mesh_type in mesh_types:
-        for Nx, Ny in mesh_sizes:
-            print(f"\nProcessing {mesh_type} mesh with Nx={Nx}, Ny={Ny}:")
+        for Nx in mesh_sizes:
+            Ny = Nx
+            
             
             # Generate mesh with specified size
             flow.generate_mesh(mesh_type=mesh_type, Nx=Nx, Ny=Ny)
             
             # Calculate initial velocity field
-            U_face_initial = flow.Rhie_Chow(0)
+            U_face_initial,aP = flow.Rhie_Chow(0)
+            #print(U_face_initial)
             
             # Get base velocity field for correction
             n_elements = flow.mesh.get_number_of_elements()
-            u = flow.u_lap_6()
+            #u = flow.u_lap_6()
+            u = np.zeros(n_elements)
             v = np.zeros(n_elements)
             
             # Calculate pressure correction and corrected velocities
-            P_prime, U_face_corrected = flow.Correction_pression(U_face_initial, u, v)
-            
-            # Create plotter and generate visualization
+            P_prime, U_face_corrected = flow.Correction_pression(U_face_initial, aP)
+           
             plotter = VelocityFieldPlotter(flow)
             fig = plotter.plot_all_fields(
                 U_face_initial, 
@@ -849,7 +868,9 @@ def main():
 
             # Print divergence statistics
             div_initial = flow.Calcul_divergence(U_face_initial)
+           # print("Divergence initiale",div_initial)
             div_corrected = flow.Calcul_divergence(U_face_corrected)
+            #print("Divergence corrigée",div_corrected)
             print(f"Initial max divergence: {np.max(np.abs(div_initial)):.2e}")
             print(f"Corrected max divergence: {np.max(np.abs(div_corrected)):.2e}")
             print(f"Improvement factor: {np.max(np.abs(div_initial))/np.max(np.abs(div_corrected)):.2f}x")

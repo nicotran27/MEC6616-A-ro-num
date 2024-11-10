@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Nov  3 21:25:18 2024
-
-@author: mathisturquet
-"""
-
 import numpy as np
 import scipy.sparse as sparse
 import scipy.sparse.linalg as spla
@@ -204,8 +196,9 @@ class CouetteFlow:
         v_face = 0.5 * (v[left_cell] + v[right_cell])
         
         # Vitesse normale à la face
-        vel_normal = (u_face * self.normal_face[i_face, 0] + 
-                     v_face * self.normal_face[i_face, 1])
+        nx,ny = self.normal_face[i_face]
+        vel_normal = u_face * nx + v_face * ny
+       
         
         # Terme convectif
         conv_coeff = 0.5 * self.rho * vel_normal * self.face_areas[i_face]
@@ -242,7 +235,6 @@ class CouetteFlow:
         if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max) or np.isclose(x_face, self.x_min) :
             # Dirichlet
             u_boundary, v_boundary = self.analytical_solution(x_face, y_face, P)
-            
             diff_coeff = self.mu * self.face_areas[i_face] / (0.5 * self.face_areas[i_face])
             A[left_cell, left_cell] += diff_coeff
             A[n_cells + left_cell, n_cells + left_cell] += diff_coeff
@@ -353,7 +345,6 @@ class CouetteFlow:
         v_final = alpha * v_new + (1 - alpha) * v_prec
         return u_final, v_final
 
-
     def Rhie_Chow(self, P: float = 0, max_iterations: int = 1000, 
               tolerance: float = 1e-6, alpha: float = 1) -> np.ndarray:
         """
@@ -405,7 +396,7 @@ class CouetteFlow:
                 print("Attention: Nombre maximum d'itérations atteint sans convergence")
     
        
-        #print("u : " ,u)
+        # print("u : " ,u)
         #print("v : " ,v)
         # Calculer le champ de pression
         P_field = np.zeros(n_elements)
@@ -460,24 +451,26 @@ class CouetteFlow:
                 x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
                                         for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
                 
-                if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max) or np.isclose(x_face,self.x_min) or np.isclose(x_face,self.x_max):
-                    # Condition limite de Dirichlet - utiliser la vitesse exacte
+                if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max) or np.isclose(x_face,self.x_min) :
+                    # Condition limite de Dirichlet - utiliser la vitesse exacte 
+                    # FAce ouest, nord ,sud 
                     u_bound, v_bound = self.analytical_solution(x_face, y_face, P)
                     U_face[i_face] = u_bound * nx + v_bound * ny
                     #print("u_limit : ",u_bound)
                     #print(nx)
                     #print("Ubound", U_face[i_face])
-                else:
+                elif np.isclose(x_face,self.x_max) : 
+                    # Face est 
                     # Condition limite de Neumann - utiliser les valeurs au centre de la cellule
                     U_face[i_face] = u[left_cell] * nx + v[left_cell] * ny
                     
                     
         #print("U_face", U_face)
         
-        return U_face,aP
+        return U_face, aP
     
-    def Correction_pression(self, U_face,aP,P: float = 0, max_iterations: int = 1000, 
-              tolerance: float = 1e-6, alpha: float = 1) -> np.ndarray:
+    def Correction_pression(self, U_face, aP, P: float = 0, max_iterations: int = 1000, 
+          tolerance: float = 1e-6, alpha: float = 1) -> np.ndarray:
         """
         Interpolation de Rhie-Chow modifiée avec sous-relaxation.
         
@@ -497,108 +490,98 @@ class CouetteFlow:
         np.ndarray
             Vitesses normales aux faces
         """
-        # Initialisation des champs de vitesse
+        # Initialisation
         n_elements = self.mesh.get_number_of_elements()
         n_faces = self.mesh.get_number_of_faces()
         
-        # Création  des matrices B et NP 
+        # Création des matrices B et NP 
+        NP = sparse.lil_matrix((n_elements, n_elements))
+        B = np.zeros(n_elements)
         
-        B = np.zeros((n_elements,1))
-        NP =  np.zeros((n_elements,n_elements))
-        
-        
-        for i_face in range(n_faces):
+        # Assemblage
+        for i_face in range(n_faces): 
             left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
-           
-            ap = aP[left_cell]
-            aa = aP[right_cell]
             
+            ap = aP[left_cell]
             
             nodes = self.mesh.get_face_to_nodes(i_face)
-            xa,ya = self.mesh.get_node_to_xycoord(nodes[0])
-            xb,yb = self.mesh.get_node_to_xycoord(nodes[1])
-            delta_Ai = ((xb-xa)**2+(yb-ya)**2)**(1/2)
-            
-            dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
-            distance = np.linalg.norm(dx)
-            
-            vol_aP_avg = 0.5 * (self.cell_volumes[left_cell]/ap + 
-                               self.cell_volumes[right_cell]/aa)
-            
-            dfi = vol_aP_avg/distance
-            
-            
+            xa, ya = self.mesh.get_node_to_xycoord(nodes[0])
+            xb, yb = self.mesh.get_node_to_xycoord(nodes[1])
+            delta_Ai = np.sqrt((xb-xa)**2 + (yb-ya)**2)
             
             if right_cell != -1:  # Face interne
-            
-                NP[left_cell,left_cell]=   NP[left_cell,left_cell] + self.rho *dfi * delta_Ai
-                NP[left_cell ,right_cell]=   NP[left_cell,right_cell] - self.rho *dfi * delta_Ai
-                NP[right_cell,right_cell]=   NP[right_cell,right_cell] + self.rho *dfi * delta_Ai
-                NP[right_cell,left_cell]=   NP[right_cell,left_cell] - self.rho *dfi * delta_Ai
-                #print("NP",NP)
-                
-                B[left_cell]= B[left_cell] - self.rho* U_face[i_face]*delta_Ai
-                B[right_cell]= B[right_cell] + self.rho* U_face[i_face]*delta_Ai# Tout va bien jusque là
-                #print("B",B)
-               
-            if right_cell == -1:  # Face interne
-                x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
-                                        for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
-                
-                if np.isclose(x_face, self.x_min) or np.isclose(y_face, self.y_max)  or np.isclose(y_face, self.y_min):
-                    # Condition limite de Dirichlet - utiliser la vitesse exacte
-                    B[left_cell]= B[left_cell] - self.rho* U_face[i_face]*delta_Ai
-                
-                elif np.isclose(x_face, self.x_max) :
-                    dx = (x_face,y_face) - self.cell_centers[left_cell]
-                    distance = np.linalg.norm(dx)
-                    dfi = self.cell_volumes[left_cell]/ap/distance
-                    NP[left_cell,left_cell]=   NP[left_cell,left_cell] + self.rho * dfi * delta_Ai
-                    #print("NP[left_cell,left_cell]",NP[left_cell,left_cell])
-                    B[left_cell]= B[left_cell] - self.rho* U_face[i_face]*delta_Ai
-        
-        solution = spla.spsolve(NP, -B)
-        #print("Solution : ", solution)
-        
-        # Début de la correction 
-        U_final =  np.zeros((n_faces,1))
-        for i_face  in range(n_faces):
-            left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
-            dfi =1 
-            ap = aP[left_cell]
-            aa = aP[right_cell]
-            
-            
-            nodes = self.mesh.get_face_to_nodes(i_face)
-            xa,ya = self.mesh.get_node_to_xycoord(nodes[0])
-            xb,yb = self.mesh.get_node_to_xycoord(nodes[1])
-            delta_Ai = ((xb-xa)**2+(yb-ya)**2)**(1/2)
-            
-            
-            
-            vol_aP_avg = 0.5 * (self.cell_volumes[left_cell]/aP[left_cell] + 
-                               self.cell_volumes[right_cell]/aP[right_cell])
-            # Reset le controle de volume pour les conditions limites 
-            
-            #U_final =  np.zeros((n_faces,1))
-            
-            if right_cell != -1:  # Face interne
+                aa = aP[right_cell]
                 dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
                 distance = np.linalg.norm(dx)
-                dfi = vol_aP_avg/distance
-                U_final[i_face] = ((solution[left_cell]-solution[right_cell])*dfi + U_face[i_face])
                 
-            if right_cell == -1:  # Face limites
+                # Moyenne harmonique pour dfi
+                dfi = (self.cell_volumes[left_cell] * self.cell_volumes[right_cell]) / \
+                      (distance * (self.cell_volumes[left_cell] * aa + 
+                                 self.cell_volumes[right_cell] * ap))
+                
+                NP[left_cell, left_cell] += self.rho * dfi * delta_Ai
+                NP[left_cell, right_cell] -= self.rho * dfi * delta_Ai
+                NP[right_cell, right_cell] += self.rho * dfi * delta_Ai
+                NP[right_cell, left_cell] -= self.rho * dfi * delta_Ai
+                
+                B[left_cell] -= self.rho * U_face[i_face] * delta_Ai
+                B[right_cell] += self.rho * U_face[i_face] * delta_Ai
+                
+            else:  # Face limite
                 x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
                                         for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
-                dx = (x_face,y_face) - self.cell_centers[left_cell]
-                distance = np.linalg.norm(dx)
-                dfi = vol_aP_avg/distance
-                if np.isclose(x_face, self.x_max):# Faces de sortie 
-                    U_final[i_face] = -(U_face[i_face] + dfi*(solution[left_cell]))
                 
+                if np.isclose(x_face, self.x_min) or np.isclose(y_face, self.y_max) or np.isclose(y_face, self.y_min):
+                    B[left_cell] -= self.rho * U_face[i_face] * delta_Ai
+                    
+                elif np.isclose(x_face, self.x_max):
+                    dx = np.array([x_face, y_face]) - self.cell_centers[left_cell]
+                    distance = np.linalg.norm(dx)
+                    dfi = self.cell_volumes[left_cell]/(ap*distance)
+                    NP[left_cell, left_cell] += self.rho * dfi * delta_Ai
+                    B[left_cell] -= self.rho * U_face[i_face] * delta_Ai
         
-        return solution, U_final 
+        # Format de matrice
+        NP = NP.tocsr()
+      
+        # Resolution
+        pression = spla.spsolve(NP, B)
+        
+        # Correction des vitesses
+        U_final = np.zeros(n_faces)
+        for i_face in range(n_faces):
+            left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
+            ap = aP[left_cell]
+            
+            nodes = self.mesh.get_face_to_nodes(i_face)
+            xa, ya = self.mesh.get_node_to_xycoord(nodes[0])
+            xb, yb = self.mesh.get_node_to_xycoord(nodes[1])
+            
+            if right_cell != -1:  # Face interne
+                aa = aP[right_cell]
+                dx = self.cell_centers[right_cell] - self.cell_centers[left_cell]
+                distance = np.linalg.norm(dx)
+                
+                # Use same interpolation as in pressure equation
+                dfi = (self.cell_volumes[left_cell] * self.cell_volumes[right_cell]) / \
+                      (distance * (self.cell_volumes[left_cell] * aa + 
+                                 self.cell_volumes[right_cell] * ap))
+                
+                U_final[i_face] = U_face[i_face] + dfi * (pression[left_cell] - pression[right_cell])
+                
+            else:  # Face limite
+                x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
+                                        for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
+                
+                if np.isclose(x_face, self.x_max):
+                    dx = np.array([x_face, y_face]) - self.cell_centers[left_cell]
+                    distance = np.linalg.norm(dx)
+                    dfi = self.cell_volumes[left_cell]/(ap*distance)
+                    U_final[i_face] = U_face[i_face] + dfi * pression[left_cell]
+                else:
+                    U_final[i_face] = U_face[i_face]
+        
+        return pression, U_final
                 
                     
         
@@ -626,11 +609,9 @@ class CouetteFlow:
                 
             return divergence
                     
-    
-    
     def calculate_simple_interpolation(self, P: float) -> np.ndarray:
         """
-        Calcul des vitesse par moyenne lin/aire
+        Calcul des vitesse par moyenne lineaire
         
         Parameters:
         -----------
@@ -642,26 +623,26 @@ class CouetteFlow:
         np.ndarray
             Vitesse aux face utilisant l'interpolation
         """
-        # Initialize
+        # Initialisation
         U_simple = np.zeros(self.mesh.get_number_of_faces())
         
-        # Get cell-centered velocities
+        # Vitesse au centre des cellules
         A, b = self.assemble_momentum_system(P, np.zeros(self.mesh.get_number_of_elements()), 
                                            np.zeros(self.mesh.get_number_of_elements()))
         solution = spla.spsolve(A, b)
         u = solution[:self.mesh.get_number_of_elements()]
         v = solution[self.mesh.get_number_of_elements():]
         
-        # Calculate at each face
+        # Calcul aux faces
         for i_face in range(self.mesh.get_number_of_faces()):
             left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
             nx, ny = self.normal_face[i_face]
             
-            if right_cell != -1:  # Internal face
+            if right_cell != -1:  # Face interne
                 u_avg = 0.5 * (u[left_cell] + u[right_cell])
                 v_avg = 0.5 * (v[left_cell] + v[right_cell])
                 U_simple[i_face] = u_avg * nx + v_avg * ny
-            else:  # Boundary face
+            else:  # Face limite
                 x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
                                         for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
                 if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max):
@@ -671,93 +652,84 @@ class CouetteFlow:
         return U_simple
     
     def Calcul_divergence (self,U_face) :
+        """
+        Calcul de la divergence
+        
+        Parameters:
+        -----------
+        U_face : 
+        np.ndarray
+            Vitesses normales aux facesn
+            
+        Returns:
+        --------
+        np.ndarray
+            Divergence de chaque cellule
+        """
         n_elements = self.mesh.get_number_of_elements()
         n_faces = self.mesh.get_number_of_faces()
         
-        divergence = np.zeros((n_elements,1))
-        for i_elem in range(n_elements):
+        divergence = np.zeros(n_elements)
+        for i_face in range(n_faces):
+            el1,el2  = self.mesh.get_face_to_elements(i_face)
             
-            divergence_face_i = 0
-            faces = self.mesh.get_face_to_elements(i_elem)
+            nodes = self.mesh.get_face_to_nodes(i_face)
+            xa,ya = self.mesh.get_node_to_xycoord(nodes[0])
+            xb,yb = self.mesh.get_node_to_xycoord(nodes[1])
+            delta_Ai = ((xb-xa)**2+(yb-ya)**2)**(1/2)
             
-            for i_face in faces:
-                
-                nodes = self.mesh.get_face_to_nodes(i_face)
-                xa,ya = self.mesh.get_node_to_xycoord(nodes[0])
-                xb,yb = self.mesh.get_node_to_xycoord(nodes[1])
-                delta_Ai = ((xb-xa)**2+(yb-ya)**2)**(1/2)
-                
-                divergence_face_i += self.rho*U_face[i_face]*delta_Ai
-                #print( self.rho*U_face[i_face]*delta_Ai)
-                
-            divergence[i_elem] = abs(divergence_face_i)
-            #print("Calcul" , divergence_face_i)
-            
+            flux = self.rho*U_face[i_face]*delta_Ai
+            flux = flux.item()
+            divergence[el1] =  divergence[el1]+ flux
+            if el2 != -1 : 
+                divergence[el2] = divergence[el2] - flux
             
         return divergence
     
-
-                
-                
-    
-    def u_lap_6(self):
-        n_elem = self.mesh.get_number_of_elements()
-        u = np.zeros((n_elem))
-        cell_centers =self.cell_centers
-        
-        
-        for i_elem in range (n_elem): 
-            x_e,y_e = cell_centers[i_elem]
-            
-            u[i_elem] = 10-x_e
-            
-            
-        return u
-      
 class VelocityFieldPlotter:
     def __init__(self, solver):
         self.solver = solver
         
     def plot_all_fields(self, U_face_initial: np.ndarray, U_face_corrected: np.ndarray, 
-                       P_prime: np.ndarray, title: str = "Flow Fields"):
+                       P_prime: np.ndarray, title: str = "Champs d'écoulement"):
         """
-        Plot velocity fields and pressure correction
+        Affiche les champs de vitesse et la correction de pression.
         
-        Parameters:
+        Paramètres:
         -----------
         U_face_initial : np.ndarray
-            Initial face velocities from Rhie-Chow
+            Vitesses initiales aux faces (Rhie-Chow)
         U_face_corrected : np.ndarray
-            Corrected face velocities after pressure correction
+            Vitesses corrigées aux faces après correction de pression
         P_prime : np.ndarray
-            Pressure correction field
+            Champ de correction de pression
         title : str
-            Title for the plot
+            Titre du graphique
         """
         fig = plt.figure(figsize=(18, 6))
         gs = plt.GridSpec(1, 3, figure=fig)
         
-        # Plot initial velocity field
+        # Affichage du champ de vitesse initial
         ax1 = fig.add_subplot(gs[0, 0])
-        self._plot_velocity_field(ax1, U_face_initial.flatten(), "Initial Velocity Field")
+        self._plot_velocity_field(ax1, U_face_initial.flatten(), "Champ de vitesse initial")
         
-        # Plot corrected velocity field
+        # Affichage du champ de vitesse corrigé
         ax2 = fig.add_subplot(gs[0, 1])
-        self._plot_velocity_field(ax2, U_face_corrected.flatten(), "Corrected Velocity Field")
+        self._plot_velocity_field(ax2, U_face_corrected.flatten(), "Champ de vitesse corrigé")
         
-        # Plot pressure correction
+        # Affichage de la correction de pression
         ax3 = fig.add_subplot(gs[0, 2])
-        self._plot_pressure_field(ax3, P_prime, "Pressure Correction")
+        self._plot_pressure_field(ax3, P_prime, "Correction de pression")
         
-        # Add overall title
+        # Ajout du titre général
         fig.suptitle(title, fontsize=14)
         plt.tight_layout()
         
         return fig
         
     def _plot_velocity_field(self, ax, U_face: np.ndarray, subtitle: str):
-        """Plot a single velocity field"""
-        # Plot mesh elements
+        """Affichage d'un champ de vitesse"""
+        # Tracé des éléments du maillage
         for i_elem in range(self.solver.mesh.get_number_of_elements()):
             nodes = self.solver.mesh.get_element_to_nodes(i_elem)
             xy_coords = []
@@ -768,7 +740,7 @@ class VelocityFieldPlotter:
             xy_coords = np.vstack((xy_coords, xy_coords[0]))
             ax.plot(xy_coords[:, 0], xy_coords[:, 1], 'k-', linewidth=0.5)
         
-        # Plot velocity vectors
+        # Tracé des vecteurs vitesse
         for i_face in range(self.solver.mesh.get_number_of_faces()):
             nodes = self.solver.mesh.get_face_to_nodes(i_face)
             xy_coords = []
@@ -784,7 +756,7 @@ class VelocityFieldPlotter:
             dx = velocity * nx * scale
             dy = velocity * ny * scale
             
-            # Use quiver for better vector visualization
+            # Utilisation de quiver pour une meilleure visualisation des vecteurs
             ax.quiver(face_center[0], face_center[1], dx, dy,
                      angles='xy', scale_units='xy', scale=1,
                      color='blue', width=0.005)
@@ -792,8 +764,8 @@ class VelocityFieldPlotter:
         self._set_plot_properties(ax, subtitle)
     
     def _plot_pressure_field(self, ax, P_prime: np.ndarray, subtitle: str):
-        """Plot pressure correction field"""
-        # Create patches for pressure visualization
+        """Affichage du champ de correction de pression"""
+        # Création des patches pour la visualisation de la pression
         patches = []
         p_values = []
         for i_elem in range(self.solver.mesh.get_number_of_elements()):
@@ -805,16 +777,16 @@ class VelocityFieldPlotter:
             patches.append(plt.Polygon(xy_coords))
             p_values.append(abs(P_prime[i_elem]))
         
-        # Create collection and add to plot
+        # Création de la collection et ajout au graphique
         p_collection = matplotlib.collections.PatchCollection(patches)
         p_collection.set_array(np.array(p_values))
         ax.add_collection(p_collection)
-        plt.colorbar(p_collection, ax=ax, label='Pressure Correction')
+        plt.colorbar(p_collection, ax=ax, label='Correction de pression')
         
         self._set_plot_properties(ax, subtitle)
     
     def _set_plot_properties(self, ax, subtitle: str):
-        """Set common plot properties"""
+        """Configuration des propriétés communes des graphiques"""
         ax.set_aspect('equal')
         ax.set_xlabel('x')
         ax.set_ylabel('y')
@@ -828,52 +800,49 @@ class VelocityFieldPlotter:
         ax.set_ylim(y_min - padding, y_max + padding)
 
 def main():
-    """Main function to test and visualize fields with different mesh sizes"""
-    # Create solver instance
+    """Fonction principale pour tester et visualiser les champs avec différentes tailles de maillage"""
+    # Création de l'instance du solveur
     flow = CouetteFlow(0, 10, 0, 10)
     
-    # Test different mesh configurations
-    mesh_types = [ "QUAD",'TRI']
-    mesh_sizes = [10]  # Different (Nx, Ny) combinations
-    
-    for mesh_type in mesh_types:
-        for Nx in mesh_sizes:
+    # Test de différentes configurations de maillage
+    mesh_parameters = [["QUAD",3],["TRI",2]]
+    for i in range(2): 
+        if 0==0 : 
+            Nx = mesh_parameters[i][1]
+            mesh_type = mesh_parameters[i][0]
             Ny = Nx
             
-            
-            # Generate mesh with specified size
+            # Génération du maillage avec la taille spécifiée
             flow.generate_mesh(mesh_type=mesh_type, Nx=Nx, Ny=Ny)
             
-            # Calculate initial velocity field
+            # Calcul du champ de vitesse initial
             U_face_initial,aP = flow.Rhie_Chow(0)
-            #print(U_face_initial)
             
-            # Get base velocity field for correction
+            # Initialisation du champ de vitesse de base pour la correction
             n_elements = flow.mesh.get_number_of_elements()
-            #u = flow.u_lap_6()
             u = np.zeros(n_elements)
             v = np.zeros(n_elements)
             
-            # Calculate pressure correction and corrected velocities
+            # Calcul de la correction de pression et des vitesses corrigées
             P_prime, U_face_corrected = flow.Correction_pression(U_face_initial, aP)
-           
+            
+            # Visualisation des résultats
             plotter = VelocityFieldPlotter(flow)
             fig = plotter.plot_all_fields(
                 U_face_initial, 
                 U_face_corrected,
                 P_prime,
-                f"Flow Fields - {mesh_type} Mesh (Nx={Nx}, Ny={Ny})"
+                f"Champs d'écoulement - Maillage {mesh_type} (Nx={Nx}, Ny={Ny})"
             )
             
-
-            # Print divergence statistics
+            # Affichage des statistiques de divergence
             div_initial = flow.Calcul_divergence(U_face_initial)
-           # print("Divergence initiale",div_initial)
+            print("Divergence initiale:", div_initial)
             div_corrected = flow.Calcul_divergence(U_face_corrected)
-            #print("Divergence corrigée",div_corrected)
-            print(f"Initial max divergence: {np.max(np.abs(div_initial)):.2e}")
-            print(f"Corrected max divergence: {np.max(np.abs(div_corrected)):.2e}")
-            print(f"Improvement factor: {np.max(np.abs(div_initial))/np.max(np.abs(div_corrected)):.2f}x")
+            print("Divergence corrigée:", div_corrected)
+            print(f"Divergence maximale initiale: {np.max(np.abs(div_initial)):.2e}")
+            print(f"Divergence maximale corrigée: {np.max(np.abs(div_corrected)):.2e}")
+            print(f"Facteur d'amélioration: {np.max(np.abs(div_initial))/np.max(np.abs(div_corrected)):.2f}x")
 
 if __name__ == "__main__":
     main()

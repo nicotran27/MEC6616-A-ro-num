@@ -6,3 +6,4 @@
 - TPP2 : 2D HT Conv+Diff - Quadrilatères et Triangles
 - LAP4 : Équations de momentum
 - LAP5 : Methode de Rhie-Chow
+- LAP6 : Correction de pression

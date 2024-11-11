@@ -231,6 +231,21 @@ class CouetteFlow:
      
         x_face, y_face = np.mean([self.mesh.get_node_to_xycoord(node) 
                                  for node in self.mesh.get_face_to_nodes(i_face)], axis=0)
+        left_cell, right_cell = self.mesh.get_face_to_elements(i_face)
+        nodes = self.mesh.get_face_to_nodes(i_face)
+        
+        xa,ya =self.mesh.get_node_to_xycoord(nodes[0]) 
+        xb,yb =self.mesh.get_node_to_xycoord(nodes[1]) 
+        
+        delta_yi = yb -ya
+        delta_xi = xb- xa
+        xtg,ytg = self.cell_centers[left_cell]
+        xtd,ytd =self.cell_centers[right_cell]
+        
+        PNKSI = 1
+                  
+         
+        
         
         if np.isclose(y_face, self.y_min) or np.isclose(y_face, self.y_max) or np.isclose(x_face, self.x_min) :
             # Dirichlet
@@ -346,7 +361,7 @@ class CouetteFlow:
         return u_final, v_final
 
     def Rhie_Chow(self, P: float = 0, max_iterations: int = 1000, 
-              tolerance: float = 1e-6, alpha: float = 1) -> np.ndarray:
+              tolerance: float = 1e-6, alpha: float = 1,P_sortie = 0) -> np.ndarray:
         """
         Interpolation de Rhie-Chow modifiée avec sous-relaxation.
         
@@ -455,14 +470,20 @@ class CouetteFlow:
                     # Condition limite de Dirichlet - utiliser la vitesse exacte 
                     # FAce ouest, nord ,sud 
                     u_bound, v_bound = self.analytical_solution(x_face, y_face, P)
+                   
                     U_face[i_face] = u_bound * nx + v_bound * ny
+                    #print("U face ",U_face[i_face])
                     #print("u_limit : ",u_bound)
                     #print(nx)
                     #print("Ubound", U_face[i_face])
                 elif np.isclose(x_face,self.x_max) : 
                     # Face est 
+                    dx = np.array([x_face, y_face]) - self.cell_centers[left_cell]
+                    xtg,ytg = self.cell_centers[left_cell]
+                    distance = np.linalg.norm(dx)
                     # Condition limite de Neumann - utiliser les valeurs au centre de la cellule
-                    U_face[i_face] = u[left_cell] * nx + v[left_cell] * ny
+                    
+                    U_face[i_face] = u[left_cell] * nx + v[left_cell] * ny  + self.cell_volumes[left_cell]/aP[left_cell]*((P_field[left_cell]-P_sortie)/distance) + self.cell_volumes[left_cell]/aP[left_cell]*(grad_P[left_cell][0]*(x_face-xtg)+grad_P[left_cell][1]*(y_face-ytg)) 
                     
                     
         #print("U_face", U_face)
@@ -563,6 +584,7 @@ class CouetteFlow:
                 distance = np.linalg.norm(dx)
                 
                 # Use same interpolation as in pressure equation
+                # Moyenne harmonique et non linéaire 
                 dfi = (self.cell_volumes[left_cell] * self.cell_volumes[right_cell]) / \
                       (distance * (self.cell_volumes[left_cell] * aa + 
                                  self.cell_volumes[right_cell] * ap))
@@ -578,6 +600,7 @@ class CouetteFlow:
                     distance = np.linalg.norm(dx)
                     dfi = self.cell_volumes[left_cell]/(ap*distance)
                     U_final[i_face] = U_face[i_face] + dfi * pression[left_cell]
+                    
                 else:
                     U_final[i_face] = U_face[i_face]
         
@@ -805,7 +828,7 @@ def main():
     flow = CouetteFlow(0, 10, 0, 10)
     
     # Test de différentes configurations de maillage
-    mesh_parameters = [["QUAD",3],["TRI",2]]
+    mesh_parameters = [["QUAD",3],["TRI",3]]
     for i in range(2): 
         if 0==0 : 
             Nx = mesh_parameters[i][1]
@@ -817,7 +840,7 @@ def main():
             
             # Calcul du champ de vitesse initial
             U_face_initial,aP = flow.Rhie_Chow(0)
-            
+            #print("Uface",U_face_initial)
             # Initialisation du champ de vitesse de base pour la correction
             n_elements = flow.mesh.get_number_of_elements()
             u = np.zeros(n_elements)
@@ -825,7 +848,7 @@ def main():
             
             # Calcul de la correction de pression et des vitesses corrigées
             P_prime, U_face_corrected = flow.Correction_pression(U_face_initial, aP)
-            
+            #print("Uface",U_face_corrected)
             # Visualisation des résultats
             plotter = VelocityFieldPlotter(flow)
             fig = plotter.plot_all_fields(

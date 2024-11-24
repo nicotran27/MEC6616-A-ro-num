@@ -7,3 +7,4 @@
 - LAP4 : Équations de momentum
 - LAP5 : Methode de Rhie-Chow
 - LAP6 : Correction de pression
+- TPP3 : Algorithm SIMPLE

@@ -10,6 +10,8 @@ from meshConnectivity import MeshConnectivity
 from meshPlotter import MeshPlotter
 from typing import Tuple, Dict, List
 import matplotlib.collections
+import matplotlib.cm as cm
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 
 class CouetteFlow:
     """
@@ -941,153 +943,57 @@ class CouetteFlow:
     
         return Fi
         
-    
-
-
-
-
-class VelocityFieldPlotter:
+class VelocityPressurePlotter:
     def __init__(self, solver):
         self.solver = solver
-
-    def plot_all_fields(self, U_face_initial: np.ndarray, U_face_corrected: np.ndarray, 
-                        P_prime: np.ndarray, u: np.ndarray, v: np.ndarray, 
-                        title: str = "Champs d'écoulement"):
-        """
-        Affiche les champs de vitesse et la correction de pression.
         
-        Paramètres:
+    def plot_fields(self, u: np.ndarray, v: np.ndarray, p: np.ndarray, 
+                   title: str = "Flow Fields"):
+        """
+        Plot u and v velocity components, velocity vectors, and pressure field.
+        
+        Parameters:
         -----------
-        U_face_initial : np.ndarray
-            Vitesses initiales aux faces (Rhie-Chow)
-        U_face_corrected : np.ndarray
-            Vitesses corrigées aux faces après correction de pression
-        P_prime : np.ndarray
-            Champ de correction de pression
         u, v : np.ndarray
-            Composantes de vitesse au centre des cellules
+            Velocity components at cell centers
+        p : np.ndarray
+            Pressure field at cell centers
         title : str
-            Titre du graphique
+            Plot title
         """
-        # Création de la première figure
-        fig1 = plt.figure(figsize=(18, 6))
-        gs = plt.GridSpec(1, 3, figure=fig1)
+        # Create figure with four subplots in 2x2 arrangement
+        fig = plt.figure(figsize=(16, 12))
+        gs = plt.GridSpec(2, 2, figure=fig)
         
-        # Affichage du champ de vitesse initial
-        ax1 = fig1.add_subplot(gs[0, 0])
-        self._plot_velocity_field(ax1, U_face_initial.flatten(), "Champ de vitesse initial")
+        # Plot u velocity component
+        ax1 = fig.add_subplot(gs[0, 0])
+        self._plot_u_field(ax1, u, "U Velocity Component")
         
-        # Affichage du champ de vitesse corrigé
-        ax2 = fig1.add_subplot(gs[0, 1])
-        self._plot_velocity_field(ax2, U_face_corrected.flatten(), "Champ de vitesse corrigé")
+        # Plot v velocity component
+        ax2 = fig.add_subplot(gs[0, 1])
+        self._plot_v_field(ax2, v, "V Velocity Component")
         
-        # Affichage de la correction de pression
-        ax3 = fig1.add_subplot(gs[0, 2])
-        self._plot_pressure_field(ax3, P_prime, "Correction de pression")
+        # Plot velocity vector field
+        ax3 = fig.add_subplot(gs[1, 0])
+        self._plot_velocity_vectors(ax3, u, v, "Velocity Vectors")
         
-        # Ajout du titre général
-        fig1.suptitle(title, fontsize=14)
+        # Plot pressure field
+        ax4 = fig.add_subplot(gs[1, 1])
+        self._plot_pressure_field(ax4, p, "Pressure Field")
+        
+        # Add title and adjust layout
+        fig.suptitle(title, fontsize=14)
         plt.tight_layout()
-
-        # Création d'une deuxième figure pour le champ de vitesse au centre des cellules
-        fig2 = plt.figure(figsize=(6, 6))
-        ax4 = fig2.add_subplot(111)  # Une seule grille pour la 4ème plot
-        self._plot_velocity_field1(ax4, u, v, "Champ de vitesse au centre des cellules")
-        fig2.suptitle("Champ au centre des cellules", fontsize=14)
-        plt.tight_layout()
-
-        return fig1, fig2  # Retour des deux figures
-    
-
-
         
-    def _plot_velocity_field(self, ax, U_face: np.ndarray, subtitle: str):
-        """Affichage d'un champ de vitesse"""
-        # Tracé des éléments du maillage
-        for i_elem in range(self.solver.mesh.get_number_of_elements()):
-            nodes = self.solver.mesh.get_element_to_nodes(i_elem)
-            xy_coords = []
-            for node in nodes:
-                x, y = self.solver.mesh.get_node_to_xycoord(node)
-                xy_coords.append([x, y])
-            xy_coords = np.array(xy_coords)
-            xy_coords = np.vstack((xy_coords, xy_coords[0]))
-            ax.plot(xy_coords[:, 0], xy_coords[:, 1], 'k-', linewidth=0.5)
-        
-        # Tracé des vecteurs vitesse
-        for i_face in range(self.solver.mesh.get_number_of_faces()):
-            nodes = self.solver.mesh.get_face_to_nodes(i_face)
-            xy_coords = []
-            for node in nodes:
-                x, y = self.solver.mesh.get_node_to_xycoord(node)
-                xy_coords.append([x, y])
-            face_center = np.mean(xy_coords, axis=0)
-            
-            nx, ny = self.solver.normal_face[i_face]
-            velocity = U_face[i_face]
-            
-            scale = 0.1
-            dx = velocity * nx * scale
-            dy = velocity * ny * scale
-            
-            # Utilisation de quiver pour une meilleure visualisation des vecteurs
-            ax.quiver(face_center[0], face_center[1], dx, dy,
-                     angles='xy', scale_units='xy', scale=1,
-                     color='blue', width=0.005)
-        
-        self._set_plot_properties(ax, subtitle)
-        
-    def _plot_velocity_field1(self, ax, ux: np.ndarray, uy : np.ndarray, subtitle: str):
-        """Affichage d'un champ de vitesse au centre des cellules"""
-        # Tracé des éléments du maillage
-        for i_elem in range(self.solver.mesh.get_number_of_elements()):
-            nodes = self.solver.mesh.get_element_to_nodes(i_elem)
-            xy_coords = []
-            for node in nodes:
-                x, y = self.solver.mesh.get_node_to_xycoord(node)
-                xy_coords.append([x, y])
-            xy_coords = np.array(xy_coords)
-            xy_coords = np.vstack((xy_coords, xy_coords[0]))  # Boucle le contour
-            ax.plot(xy_coords[:, 0], xy_coords[:, 1], 'k-', linewidth=0.5)
-    
-            norms = np.sqrt(ux**2 + uy**2)  # Norme des vitesses
-        max_velocity = np.max(norms)  # Norme max
-        scale = 0.1/ max_velocity if max_velocity > 0 else 0.1  # Évite div. par 0
-    
-        for i_elem in range(self.solver.mesh.get_number_of_elements()):
-            # Récupération des nœuds de l'élément
-            nodes = self.solver.mesh.get_element_to_nodes(i_elem)
-            xy_coords = []
-            for node in nodes:
-                x, y = self.solver.mesh.get_node_to_xycoord(node)
-                xy_coords.append([x, y])
-            xy_coords = np.array(xy_coords)
-            
-            # Calcul du centre de l'élément
-            cell_center = np.mean(xy_coords, axis=0)
-            
-            # Composantes de vitesse au centre de la cellule
-            velocity_x = ux[i_elem] 
-            velocity_y = uy[i_elem]
-            
-            # Mise à l'échelle des vecteurs
-            dx = velocity_x * scale
-            dy = velocity_y * scale
-            
-            # Tracé des vecteurs avec `quiver`
-            ax.quiver(cell_center[0], cell_center[1], dx, dy,
-                      angles='xy', scale_units='xy', scale=1,
-                      color='blue', width=0.005)
-    
-        # Configuration du titre
-        ax.set_title(subtitle)
+        return fig
 
-    
-    def _plot_pressure_field(self, ax, P_prime: np.ndarray, subtitle: str):
-        """Affichage du champ de correction de pression"""
-        # Création des patches pour la visualisation de la pression
+    def _plot_u_field(self, ax, u: np.ndarray, subtitle: str):
+        """Plot u velocity component field"""
+        # Plot mesh elements
+        self._plot_mesh(ax)
+        
+        # Create patches for u velocity visualization
         patches = []
-        p_values = []
         for i_elem in range(self.solver.mesh.get_number_of_elements()):
             nodes = self.solver.mesh.get_element_to_nodes(i_elem)
             xy_coords = []
@@ -1095,29 +1001,128 @@ class VelocityFieldPlotter:
                 x, y = self.solver.mesh.get_node_to_xycoord(node)
                 xy_coords.append([x, y])
             patches.append(plt.Polygon(xy_coords))
-            p_values.append(abs(P_prime[i_elem]))
         
-        # Création de la collection et ajout au graphique
-        p_collection = matplotlib.collections.PatchCollection(patches)
-        p_collection.set_array(np.array(p_values))
+        # Create patch collection for u velocity
+        v_collection = matplotlib.collections.PatchCollection(patches, alpha=0.8)
+        v_collection.set_array(u)
+        v_collection.set_cmap("viridis")
+        
+        # Add collection to plot
+        ax.add_collection(v_collection)
+        plt.colorbar(v_collection, ax=ax, label='U Velocity')
+        
+        self._set_plot_properties(ax, subtitle)
+
+    def _plot_v_field(self, ax, v: np.ndarray, subtitle: str):
+        """Plot v velocity component field"""
+        # Plot mesh elements
+        self._plot_mesh(ax)
+        
+        # Create patches for v velocity visualization
+        patches = []
+        for i_elem in range(self.solver.mesh.get_number_of_elements()):
+            nodes = self.solver.mesh.get_element_to_nodes(i_elem)
+            xy_coords = []
+            for node in nodes:
+                x, y = self.solver.mesh.get_node_to_xycoord(node)
+                xy_coords.append([x, y])
+            patches.append(plt.Polygon(xy_coords))
+        
+        # Create patch collection for v velocity
+        v_collection = matplotlib.collections.PatchCollection(patches, alpha=0.8)
+        v_collection.set_array(v)
+        v_collection.set_cmap("viridis")
+        
+        # Add collection to plot
+        ax.add_collection(v_collection)
+        plt.colorbar(v_collection, ax=ax, label='V Velocity')
+        
+        self._set_plot_properties(ax, subtitle)
+
+    def _plot_velocity_vectors(self, ax, u: np.ndarray, v: np.ndarray, subtitle: str):
+        """Plot velocity vector field"""
+        # Plot mesh elements
+        self._plot_mesh(ax)
+        
+        # Calculate velocity magnitude for scaling
+        velocity_magnitude = np.sqrt(u**2 + v**2)
+        scale = 0.3 / np.max(velocity_magnitude) if np.max(velocity_magnitude) > 0 else 0.3
+        
+        # Plot velocity vectors
+        for i_elem in range(self.solver.mesh.get_number_of_elements()):
+            nodes = self.solver.mesh.get_element_to_nodes(i_elem)
+            xy_coords = []
+            for node in nodes:
+                x, y = self.solver.mesh.get_node_to_xycoord(node)
+                xy_coords.append([x, y])
+            cell_center = np.mean(xy_coords, axis=0)
+            
+            dx = u[i_elem] * scale
+            dy = v[i_elem] * scale
+            
+            ax.quiver(cell_center[0], cell_center[1], dx, dy,
+                     angles='xy', scale_units='xy', scale=1,
+                     width=0.005)
+        
+        # Add a dummy scalar mappable for colorbar
+        sm = plt.cm.ScalarMappable(cmap="viridis", 
+                                  norm=plt.Normalize(0, np.max(velocity_magnitude)))
+        plt.colorbar(sm, ax=ax, label='Vector Magnitude')
+        
+        self._set_plot_properties(ax, subtitle)
+
+    def _plot_pressure_field(self, ax, p: np.ndarray, subtitle: str):
+        """Plot pressure field"""
+        # Plot mesh elements
+        self._plot_mesh(ax)
+        
+        # Create patches for pressure visualization
+        patches = []
+        for i_elem in range(self.solver.mesh.get_number_of_elements()):
+            nodes = self.solver.mesh.get_element_to_nodes(i_elem)
+            xy_coords = []
+            for node in nodes:
+                x, y = self.solver.mesh.get_node_to_xycoord(node)
+                xy_coords.append([x, y])
+            patches.append(plt.Polygon(xy_coords))
+        
+        # Create patch collection for pressure
+        p_collection = matplotlib.collections.PatchCollection(patches, alpha=0.8)
+        p_collection.set_array(p)
+        p_collection.set_cmap("viridis")
+        
+        # Add collection to plot
         ax.add_collection(p_collection)
-        plt.colorbar(p_collection, ax=ax, label='Correction de pression')
+        plt.colorbar(p_collection, ax=ax, label='Pressure')
         
         self._set_plot_properties(ax, subtitle)
     
+    def _plot_mesh(self, ax):
+        """Plot mesh elements"""
+        for i_elem in range(self.solver.mesh.get_number_of_elements()):
+            nodes = self.solver.mesh.get_element_to_nodes(i_elem)
+            xy_coords = []
+            for node in nodes:
+                x, y = self.solver.mesh.get_node_to_xycoord(node)
+                xy_coords.append([x, y])
+            xy_coords = np.array(xy_coords)
+            xy_coords = np.vstack((xy_coords, xy_coords[0]))  # Close the loop
+            ax.plot(xy_coords[:, 0], xy_coords[:, 1], 'k-', linewidth=0.5, alpha=0.3)
+    
     def _set_plot_properties(self, ax, subtitle: str):
-        """Configuration des propriétés communes des graphiques"""
+        """Set common plot properties"""
         ax.set_aspect('equal')
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_title(subtitle)
-        ax.grid(True, linestyle='--', alpha=0.5)
+        ax.grid(True, linestyle='--', alpha=0.3)
         
         x_min, x_max = self.solver.x_min, self.solver.x_max
         y_min, y_max = self.solver.y_min, self.solver.y_max
         padding = 0.1 * max(x_max - x_min, y_max - y_min)
         ax.set_xlim(x_min - padding, x_max + padding)
         ax.set_ylim(y_min - padding, y_max + padding)
+
 
 
 def main():
@@ -1191,7 +1196,7 @@ def main():
                 div_max = np.abs(np.max(div_initial))
                 div_residuals.append(div_max)
                 
-                print("Divergence initiale:", np.abs(np.max(div_initial)))
+                # print("Divergence initiale:", np.abs(np.max(div_initial)))
                 # div_corrected = flow.Calcul_divergence(UF)
                 # print("Divergence corrigée:", div_corrected)
                 
@@ -1217,6 +1222,13 @@ def main():
             plt.title(f'Convergence History - {mesh_type} Mesh ({Nx}x{Ny})')
             plt.legend()      
             plt.gcf()
+                
+            # Visualisation des résultats
+            plotter = VelocityPressurePlotter(flow)
+            fig = plotter.plot_fields(up, vp, P_field, title="Couette Flow Solution")
+            plt.show()    
+     
+
 
 if __name__ == "__main__":
     main()

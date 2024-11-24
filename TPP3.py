@@ -163,19 +163,18 @@ class CouetteFlow:
         - μ = dynamic viscosity
         - dP/dx = pressure gradient
         """
-        h = self.y_max - self.y_min  # Channel height
-        u_mean = 1.0  # Mean velocity (given)
+        h = self.y_max - self.y_min  
+        u_mean = 1.0 
         
-        # Calculate pressure gradient from mean velocity
-        dpdx = -2 * self.mu * u_mean * 6 / (h * h)  # From integration of velocity profile
+        dpdx = -2 * self.mu * u_mean * 6 / (h * h)  
         
-        # Analytical velocity profile
+       
         if np.isclose(y, self.y_min) or np.isclose(y, self.y_max):
-            u = 0.0  # No-slip condition at walls
+            u = 0.0 
         else:
             u = (-dpdx / (2 * self.mu)) * (y - self.y_min) * (self.y_max - y)
         
-        v = 0.0  # No vertical velocity
+        v = 0.0  
         
         return u, v
     
@@ -204,11 +203,11 @@ class CouetteFlow:
         h = self.y_max - self.y_min
         u_mean = 1.0
         
-        # Calculate pressure gradient
+        
         dpdx = -2 * self.mu * u_mean * 6 / (h * h)
         
-        # Pressure distribution (linear in x)
-        P_in = 0.0  # Reference pressure at inlet
+        
+        P_in = 0.0  
         return P_in - dpdx * x
         
     # Création de l'étape 2 pour bien initilaisater les flux ( à priori qui sont nuls)   

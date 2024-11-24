@@ -140,39 +140,76 @@ class CouetteFlow:
     
     def analytical_solution(self, x: float, y: float, P: float) -> Tuple[float, float]:
         """
-        Solution analytique pour l'écoulement de Couette.
+        Analytical solution for Poiseuille flow.
         
-        Paramètres:
+        Parameters:
         -----------
         x, y : float
-            Coordonnées du point
+            Point coordinates
         P : float
-            Paramètre de gradient de pression
-            
-        Retourne:
+            Pressure gradient parameter
+                
+        Returns:
         --------
         u, v : float
-            Composantes de la vitesse
+            Velocity components
+        
+        Notes:
+        ------
+        For Poiseuille flow:
+        - u(y) = (dP/dx)/(2μ) * y(h-y)
+        - v = 0
+        - h = channel height
+        - μ = dynamic viscosity
+        - dP/dx = pressure gradient
         """
-    
-        u = 1 # Solution analytique corrigée
-        v = 0
+        h = self.y_max - self.y_min  # Channel height
+        u_mean = 1.0  # Mean velocity (given)
+        
+        # Calculate pressure gradient from mean velocity
+        dpdx = -2 * self.mu * u_mean * 6 / (h * h)  # From integration of velocity profile
+        
+        # Analytical velocity profile
         if np.isclose(y, self.y_min) or np.isclose(y, self.y_max):
-            u = 0
+            u = 0.0  # No-slip condition at walls
+        else:
+            u = (-dpdx / (2 * self.mu)) * (y - self.y_min) * (self.y_max - y)
+        
+        v = 0.0  # No vertical velocity
+        
         return u, v
     
     def champ_P(self, x: float, y: float, P: float = 0) -> float:
         """
-        Calcul du champ de pression basé sur le paramètre P.
+        Calculate pressure field based on analytical solution.
         
-        Pour P=0: pression nulle partout
-        Pour P≠0: pression linéaire en x avec coefficient P
+        Parameters:
+        -----------
+        x, y : float
+            Point coordinates
+        P : float, optional (default=0)
+            Not used in Poiseuille flow
+            
+        Returns:
+        --------
+        float
+            Pressure value at point (x,y)
+        
+        Notes:
+        ------
+        For Poiseuille flow:
+        - P(x) = P_in - (dP/dx)*x
+        - dP/dx is constant
         """
-        if P == 0:
-            return 0.0
-        else:
-            # Pression linéaire en direction x, mise à l'échelle par P
-            return -P * x
+        h = self.y_max - self.y_min
+        u_mean = 1.0
+        
+        # Calculate pressure gradient
+        dpdx = -2 * self.mu * u_mean * 6 / (h * h)
+        
+        # Pressure distribution (linear in x)
+        P_in = 0.0  # Reference pressure at inlet
+        return P_in - dpdx * x
         
     # Création de l'étape 2 pour bien initilaisater les flux ( à priori qui sont nuls)   
     def initialisation_flux(self, u : np.ndarray,v :np.ndarray) :
@@ -570,7 +607,7 @@ class CouetteFlow:
      
     def relaxation(self, u_new: np.ndarray, v_new: np.ndarray, 
               u_prec: np.ndarray, v_prec: np.ndarray, 
-              alpha: float = 1) -> Tuple[np.ndarray, np.ndarray]:
+              alpha: float = 0.1) -> Tuple[np.ndarray, np.ndarray]:
         """
         Applique une sous-relaxation sur les champs de vitesse.
         
@@ -592,12 +629,12 @@ class CouetteFlow:
         v_final = alpha * v_new + (1 - alpha) * v_prec
         return u_final, v_final
     
-    def relaxation_Fn( self,Fn :np.ndarray,F_prec :np.ndarray, alpha = 0.7):
+    def relaxation_Fn( self,Fn :np.ndarray,F_prec :np.ndarray, alpha = 0.1):
         Fn = alpha * Fn + (1 - alpha) * F_prec
         return Fn
     
     def relaxation_pression(self, P_new : np.ndarray, P_prec : np.ndarray, 
-              alpha: float = 1) -> Tuple[np.ndarray, np.ndarray]:
+              alpha: float = 0.1) -> Tuple[np.ndarray, np.ndarray]:
         """
         Applique une sous-relaxation sur les champs de vitesse.
         
@@ -620,7 +657,7 @@ class CouetteFlow:
         return P_final
 
        
-    def assemblage_lap_4(self,Fi,u,v,grad_P,bcdata,P =0,alpha = 0.7):
+    def assemblage_lap_4(self,Fi,u,v,grad_P,bcdata,P =0,alpha = 0.1):
         n_elements = self.mesh.get_number_of_elements()
         for i in range (1) : 
             A, b = self.assemble_momentum_system(P, u, v,Fi,grad_P,bcdata)
@@ -748,7 +785,7 @@ class CouetteFlow:
         return U_face,V_face, aP
     
     def Correction_pression(self, U_face, aP,bcdata = [["ENTREE",0],["PAROI",1],["SORTIE",2],["PAROI",3]], P: float = 0, max_iterations: int = 1000, 
-          tolerance: float = 1e-6, alpha: float = 1) -> np.ndarray:
+          tolerance: float = 1e-6, alpha: float = 0.1) -> np.ndarray:
         """
         Interpolation de Rhie-Chow modifiée avec sous-relaxation.
         
@@ -1193,7 +1230,7 @@ def main():
                 # )
                 # # Affichage des statistiques de divergence
                 div_initial = flow.Calcul_divergence(UnRC)
-                div_max = np.abs(np.max(div_initial))
+                div_max = np.sum(np.abs(div_initial))
                 div_residuals.append(div_max)
                 
                 # print("Divergence initiale:", np.abs(np.max(div_initial)))

@@ -244,7 +244,7 @@ class CouetteFlow:
         return A.tocsr(), b
     
     def _add_internal_face_contribution(self, A: sparse.lil_matrix, b: np.ndarray, u: np.ndarray, v: np.ndarray,grad : np.ndarray, 
-                                      left_cell: int, right_cell: int, i_face: int,Fi,resol = "CENTRE", ) -> None:
+                                      left_cell: int, right_cell: int, i_face: int,Fi,resol = "UPWIND", ) -> None:
         """Ajout des contributions des faces internes à la matrice du système."""
         n_cells = self.mesh.get_number_of_elements()
         nodes = self.mesh.get_face_to_nodes(i_face)
@@ -1119,109 +1119,6 @@ class VelocityFieldPlotter:
         ax.set_xlim(x_min - padding, x_max + padding)
         ax.set_ylim(y_min - padding, y_max + padding)
 
-def track_residuals(flow, mesh_parameters, bcdata):
-    """Track and plot residuals during the SIMPLE algorithm iteration"""
-    # Initialize storage for residuals
-    max_iterations = 2000
-    u_residuals = []
-    v_residuals = []
-    p_residuals = []
-    div_residuals = []
-    
-    # Setup initial conditions
-    Nx = mesh_parameters[0][1]
-    mesh_type = mesh_parameters[0][0]
-    Ny = mesh_parameters[0][2]
-    flow.generate_mesh(mesh_type=mesh_type, Nx=Nx, Ny=Ny)
-    
-    # Initial fields
-    n_elements = flow.mesh.get_number_of_elements()
-    u = np.zeros(n_elements)
-    v = np.zeros(n_elements)
-    P_field = np.zeros(n_elements)
-    grad_P = flow.least_squares_gradient(P_field)
-    F_initial = flow.initialisation_flux(u,v)
-    
-    # Reference values for residuals
-    u_ref = None
-    v_ref = None
-    p_ref = None
-    
-    condition = 1
-    iteration = 0
-    
-    while condition > 10**-10 and iteration < max_iterations:
-        iteration += 1
-        
-        # Store previous iteration values for residual calculation
-        u_prev = u.copy() if iteration > 1 else None
-        v_prev = v.copy() if iteration > 1 else None
-        p_prev = P_field.copy() if iteration > 1 else None
-        
-        # Main SIMPLE algorithm steps
-        up, vp, aP = flow.assemblage_lap_4(F_initial, u, v, grad_P, bcdata)
-        UnRC, VnRC, aP = flow.Rhie_Chow(F_initial, up, vp, grad_P, aP, P_field, bcdata)
-        
-        if iteration == 1:
-            Un = UnRC
-            u_ref = np.linalg.norm(up)
-            v_ref = np.linalg.norm(vp)
-            p_ref = np.linalg.norm(P_field)
-            
-        # Rhie-Chow relaxation
-        alphaRC = 0.1
-        UnRC = flow.relaxation_RC(UnRC, Un, alphaRC)
-        
-        # Pressure correction
-        bcdpc = [["ENTREE",0],["PAROI",1],["SORTIE",2],["PAROI",3]]
-        P_prime, UF = flow.Correction_pression(UnRC, aP, bcdpc)
-        
-        # Calculate divergence
-        div_initial = flow.Calcul_divergence(UnRC)
-        div_max = np.max(np.abs(div_initial))
-        
-        # Pressure correction with relaxation
-        Alpha_P = 0.1
-        P_field += Alpha_P * P_prime
-        
-        # Calculate residuals
-        if iteration > 1:
-            u_res = np.linalg.norm(up - u_prev) / u_ref
-            v_res = np.linalg.norm(vp - v_prev) / v_ref
-            p_res = np.linalg.norm(P_field - p_prev) / p_ref
-            
-            u_residuals.append(u_res)
-            v_residuals.append(v_res)
-            p_residuals.append(p_res)
-            div_residuals.append(div_max)
-        
-        # Update for next iteration
-        bcdp = [["Libre",0],["NEUMANN",1],["DIRICHLET",2],["NEUMANN",3]]
-        grad_P = flow.least_squares_gradient(P_field, bcdp)
-        Un = UF
-        condition = div_max
-        F_initial = flow.Fi_nouveau(up, vp)
-        
-        # Update velocity fields
-        u = up
-        v = vp
-    
-    # Plot residuals
-    iterations = range(1, len(u_residuals) + 1)
-    
-    plt.figure(figsize=(12, 8))
-    plt.semilogy(iterations, u_residuals, 'b-', label='u velocity')
-    plt.semilogy(iterations, v_residuals, 'r-', label='v velocity')
-    plt.semilogy(iterations, p_residuals, 'g-', label='pressure')
-    plt.semilogy(iterations, div_residuals, 'k-', label='max divergence')
-    
-    plt.grid(True)
-    plt.xlabel('Iteration')
-    plt.ylabel('Residual (log scale)')
-    plt.title(f'Convergence History - {mesh_type} Mesh ({Nx}x{Ny})')
-    plt.legend()
-    
-    return plt.gcf()
 
 def main():
     """Fonction principale pour tester et visualiser les champs avec différentes tailles de maillage"""
@@ -1229,7 +1126,9 @@ def main():
     flow = CouetteFlow(0,1,0,1)
     bcdata = [["DIRICHLET",0],["DIRICHLET",1],["DIRICHLET",2],["DIRICHLET",3]]
     # Test de différentes configurations de maillage
-    mesh_parameters = [["QUAD",5,5],["QUAD",20,10],["QUAD",40,20]]
+    mesh_parameters = [["TRI",4,4],["QUAD",20,10],["QUAD",40,20]]
+    max_iterations = 2000
+    div_residuals = []
     for i in range(1): 
         if 0==0 : 
             Nx = mesh_parameters[i][1]
@@ -1256,12 +1155,12 @@ def main():
 
             condition = 1
             iteration = 0
-            while condition > 10**-10 and iteration <50: 
+            while condition > 10**-10 and iteration <max_iterations: 
                 iteration+=1
                 # Etape 3
                 up,vp,aP = flow.assemblage_lap_4(F_initial,u,v,grad_P,bcdata)
-                print("up",up)
-                print("vp",vp)
+                # print("up",up)
+                # print("vp",vp)
                 
                 # Etape 4 : Moyenne des vitesses de Rhie Chow 
                 UnRC,VnRC,aP = flow.Rhie_Chow(F_initial,up,vp,grad_P,aP,P_field,bcdata)
@@ -1270,7 +1169,7 @@ def main():
                 if iteration ==1 : 
                     Un = UnRC
                 # SOus relaxation de Rhie CHOW  
-                alphaRC =.9
+                alphaRC =.1
                 UnRC = flow.relaxation_RC(UnRC,Un,alphaRC)
                 
                 # Etape 5 
@@ -1278,20 +1177,23 @@ def main():
                 P_prime, UF = flow.Correction_pression(UnRC,aP,bcdpc)
                 
                 # Visualisation des résultats
-                plotter = VelocityFieldPlotter(flow)
-                fig = plotter.plot_all_fields(
-                    UnRC, 
-                    UF,
-                    P_prime,
-                    up,
-                    vp,
-                    f"Champs d'écoulement - Maillage {mesh_type} (Nx={Nx}, Ny={Ny}) - Iteration = {iteration}"
-                )
+                # plotter = VelocityFieldPlotter(flow)
+                # fig = plotter.plot_all_fields(
+                #     UnRC, 
+                #     UF,
+                #     P_prime,
+                #     up,
+                #     vp,
+                #     f"Champs d'écoulement - Maillage {mesh_type} (Nx={Nx}, Ny={Ny}) - Iteration = {iteration}"
+                # )
                 # # Affichage des statistiques de divergence
                 div_initial = flow.Calcul_divergence(UnRC)
-                print("Divergence initiale:", div_initial)
-                div_corrected = flow.Calcul_divergence(UF)
-                print("Divergence corrigée:", div_corrected)
+                div_max = np.abs(np.max(div_initial))
+                div_residuals.append(div_max)
+                
+                print("Divergence initiale:", np.abs(np.max(div_initial)))
+                # div_corrected = flow.Calcul_divergence(UF)
+                # print("Divergence corrigée:", div_corrected)
                 
                 #Correction du champ de pression 
                 Alpha_P =0.1
@@ -1307,11 +1209,14 @@ def main():
                 Fi_initial = flow.Fi_nouveau(up,vp)
                 
                 
-            fig = track_residuals(flow, mesh_parameters, bcdata)
-            plt.show()      
-                #print(f"Divergence maximale initiale: {np.max(np.abs(div_initial)):.2e}")
-                #print(f"Divergence maximale corrigée: {np.max(np.abs(div_corrected)):.2e}")
-                #print(f"Facteur d'amélioration: {np.max(np.abs(div_initial))/np.max(np.abs(div_corrected)):.2f}x")
+            iterations = range(1, len(div_residuals) + 1)
+            plt.semilogy(iterations, div_residuals, 'k-', label=f'Max divergence')
+            plt.grid(True)
+            plt.xlabel('Iteration')
+            plt.ylabel('Residual (log scale)')
+            plt.title(f'Convergence History - {mesh_type} Mesh ({Nx}x{Ny})')
+            plt.legend()      
+            plt.gcf()
 
 if __name__ == "__main__":
     main()

@@ -35,7 +35,7 @@ class CouetteFlow:
         # Propriétés physiques
         self.rho = 1.0  # Masse volumique [kg/m^3]
         self.mu = 0.02  # Viscosité dynamique [N*s/m^2]
-        self.U = 1.0    # Vitesse de la paroi supérieure [m/s]
+        self.U = 1.5    # Vitesse de la paroi supérieure [m/s]
         
         # Propriétés du maillage
         self.mesh = None
@@ -44,7 +44,7 @@ class CouetteFlow:
         self.normal_face = None
         self.cell_centers = None
 
-    def generate_mesh(self, mesh_type: str = 'QUAD', lc: float = 0.1) -> None:
+    def generate_mesh(self, mesh_type: str = 'TRI', lc: float = 1) -> None:
         """
         Génération du maillage pour une géométrie de marche descendante.
         
@@ -62,7 +62,7 @@ class CouetteFlow:
 
 
             
-        mesh_parameters = {'mesh_type': 'QUAD',
+        mesh_parameters = {'mesh_type': 'TRI',
                            'lc': lc
                            }
         self.mesh = mesh_generator.back_step(.5, 1, 4, 16, mesh_parameters)
@@ -150,41 +150,20 @@ class CouetteFlow:
     
     def analytical_solution(self, x: float, y: float, P: float) -> Tuple[float, float]:
         """
-        Analytical solution for Poiseuille flow.
-        
-        Parameters:
-        -----------
-        x, y : float
-            Point coordinates
-        P : float
-            Pressure gradient parameter
-                
-        Returns:
-        --------
-        u, v : float
-            Velocity components
-        
-        Notes:
-        ------
-        For Poiseuille flow:
-        - u(y) = (dP/dx)/(2μ) * y(h-y)
-        - v = 0
-        - h = channel height
-        - μ = dynamic viscosity
-        - dP/dx = pressure gradient
+        Analytical solution for backward-facing step.
+        Implements parabolic profile in upper channel only, zero elsewhere.
         """
-        h = self.y_max - self.y_min  
-        u_mean = 1.0 
+        u_max = 1.5 
+        H = self.y_max  # Total height
+        h = H/2        # Step height
         
-        dpdx = -2 * self.mu * u_mean * 6 / (h * h)  
+        # Initialize velocities to zero
+        u = 0.0
+        v = 0.0
         
-       
-        if np.isclose(y, self.y_min) or np.isclose(y, self.y_max):
-            u = 0.0 
-        else:
-            u = (-dpdx / (2 * self.mu)) * (y - self.y_min) * (self.y_max - y)
-        
-        v = 0.0  
+        # Apply parabolic profile only in upper channel (y >= h)
+        if y >= h:
+            u = u_max * 4 * (y-h)*(H-y)/(H-h)**2
         
         return u, v
     
@@ -211,7 +190,7 @@ class CouetteFlow:
         - dP/dx is constant
         """
         h = self.y_max - self.y_min
-        u_mean = 1.0
+        u_mean = 1.5
         
         
         dpdx = -2 * self.mu * u_mean * 6 / (h * h)
@@ -292,7 +271,7 @@ class CouetteFlow:
         return A.tocsr(), b
     
     def _add_internal_face_contribution(self, A: sparse.lil_matrix, b: np.ndarray, u: np.ndarray, v: np.ndarray,grad : np.ndarray, 
-                                      left_cell: int, right_cell: int, i_face: int,Fi,resol = "CENTRE", ) -> None:
+                                      left_cell: int, right_cell: int, i_face: int,Fi,resol = "UPWIND", ) -> None:
         """Ajout des contributions des faces internes à la matrice du système."""
         n_cells = self.mesh.get_number_of_elements()
         nodes = self.mesh.get_face_to_nodes(i_face)
@@ -1099,116 +1078,120 @@ class VelocityPressurePlotter:
 
 def main():
     """Main function to solve the backward-facing step problem for Re=100 and Re=400"""
-   
-    Reynolds_numbers = [100, 400]
-    
-    for Re in Reynolds_numbers:
-      
-        
-        
-        H = 1.0  
-        h = 0.5  
-        L = 16.0  
-        Ls = 4.0  
-        
-       
-        rho = 1.0  
-        u_mean = 1.0  
-        mu = rho * u_mean * H / Re  
-        u_max = 1.5 * u_mean  
-        
-   
-        flow = CouetteFlow(0, L, 0, H)
-        flow.rho = rho
-        flow.mu = mu
-        flow.U = u_max
-        
-      
-        bcdata = [["DIRICHLET", 0], ["DIRICHLET", 1], ["NEUMANN", 2], ["DIRICHLET", 3]]
-        
-      
-        flow.generate_mesh(mesh_type='QUAD', lc=0.1) 
-        
-       
-        n_elements = flow.mesh.get_number_of_elements()
-        u = np.zeros(n_elements)
-        v = np.zeros(n_elements)
-        P_field = np.zeros(n_elements)
-        
-      
-        grad_P = flow.least_squares_gradient(P_field)
-        
-     
-        F_initial = flow.initialisation_flux(u, v)
-        
-      
-        max_iterations = 2000
-        convergence_criterion = 1e-10
-        div_residuals = []
-        
-      
-        condition = 1
-        iteration = 0
-        
-        while condition > convergence_criterion and iteration < max_iterations:
-            iteration += 1
-            
-          
-            up, vp, aP = flow.assemblage_lap_4(F_initial, u, v, grad_P, bcdata)
-            
-          
-            UnRC, VnRC, aP = flow.Rhie_Chow(F_initial, up, vp, grad_P, aP, P_field, bcdata)
-            
-            if iteration == 1:
-                Un = UnRC
-                
-          
-            alphaRC = 0.1
-            UnRC = flow.relaxation_RC(UnRC, Un, alphaRC)
-            
-           
-            bcdpc = [["ENTREE", 0], ["PAROI", 1], ["SORTIE", 2], ["PAROI", 3]]
-            P_prime, UF = flow.Correction_pression(UnRC, aP, bcdpc)
-            
-        
-            div_initial = flow.Calcul_divergence(UnRC)
-            div_max = np.sum(np.abs(div_initial))
-            div_residuals.append(div_max)
-            
-            Alpha_P = 0.1
-            P_field += Alpha_P * P_prime
-            
-           
-            bcdp = [["Libre", 0], ["NEUMANN", 1], ["DIRICHLET", 2], ["NEUMANN", 3]]
-            grad_P = flow.least_squares_gradient(P_field, bcdp)
-            
-            Un = UF
-            condition = np.max(np.abs(div_initial))
-            
-          
-            F_initial = flow.Fi_nouveau(up, vp)
-            
-            if iteration % 100 == 0:
-                print(f"Iteration {iteration}: Max divergence = {condition}")
-        
   
-        plt.figure(figsize=(10, 6))
-        iterations = range(1, len(div_residuals) + 1)
-        plt.semilogy(iterations, div_residuals, 'k-', label=f'Re = {Re}')
-        plt.grid(True)
-        plt.xlabel('Iteration')
-        plt.ylabel('Residual (log scale)')
-        plt.title(f'Convergence History - Re = {Re}')
-        plt.legend()
-        plt.show()
-        
+    H = 1.0   
+    h = 0.5   
+    L = 16.0  
+    Ls = 4.0   
+    
+    flow = CouetteFlow(0, L, 0, H)
+    bcdata = [
+            ["DIRICHLET", 0],  
+            ["DIRICHLET", 1],
+            ["NEUMANN", 2],   
+            ["DIRICHLET", 3]   
+        ]
+    mesh_parameters = {
+            'mesh_type': 'TRI',
+            'lc': 1  
+        }
+    mesh_parameters = [["TRI",1]]
+    max_iterations = 2000
+    div_residuals = []
+    for i in range(1): 
+        if 0==0 : 
+            lc = mesh_parameters[i][1]
+            mesh_type = mesh_parameters[i][0]
+            
+    flow.generate_mesh(mesh_parameters)
+    #Etape 1 de l'algorithme Simple 
+
+    n_elements = flow.mesh.get_number_of_elements()
+    u = np.zeros(n_elements)
+    v = np.zeros(n_elements)
+    P_field = np.zeros(n_elements)
+    
    
-        plotter = VelocityPressurePlotter(flow)
-        plotter.plot_u_velocity(u, title=f"U Velocity - Re = {Re}")
-        plotter.plot_pressure(P_field, title=f"Pressure Field - Re = {Re}")
-        plotter.plot_vector_field(u, v, title=f"Vector Field - Re = {Re}")
+    for i_elem in range(n_elements):
+        x, y = flow.cell_centers[i_elem]
         
+       
+        u[i_elem], v[i_elem] = flow.analytical_solution(x, y, P=0)
+        
+        
+        P_field[i_elem] = flow.champ_P(x, y, P=0)
+    
+    
+    # Calculer les gradients de pression en utilisant les moindres carrés
+    grad_P = flow.least_squares_gradient(P_field)
+    #print("grad_P",grad_P)
+
+    # Etape 2 de l'algorithme Simple 
+    # Calcul du champ de vitesse initial
+    F_initial = flow.initialisation_flux(u,v)
+    #print("F_initial", F_initial)
+    #print(np.size(F_initial))
+
+    condition = 1
+    iteration = 0
+    while condition > 10**-14 and iteration <max_iterations: 
+        iteration+=1
+        # Etape 3
+        up,vp,aP = flow.assemblage_lap_4(F_initial,u,v,grad_P,bcdata)
+        # print("up",up)
+        # print("vp",vp)
+        
+        # Etape 4 : Moyenne des vitesses de Rhie Chow 
+        UnRC,VnRC,aP = flow.Rhie_Chow(F_initial,up,vp,grad_P,aP,P_field,bcdata)
+        #print(UnRC)
+        
+        if iteration ==1 : 
+            Un = UnRC
+        # SOus relaxation de Rhie CHOW  
+        alphaRC =.1
+        UnRC = flow.relaxation_RC(UnRC,Un,alphaRC)
+        
+        # Etape 5 
+        bcdpc = [["ENTREE",0],["PAROI",1],["SORTIE",2],["PAROI",3]]
+        P_prime, UF = flow.Correction_pression(UnRC,aP,bcdpc)
+        
+
+        # # Affichage des statistiques de divergence
+        div_initial = flow.Calcul_divergence(UnRC)
+        div_max = np.sum(np.abs(div_initial))
+        div_residuals.append(div_max)
+
+        
+        #Correction du champ de pression 
+        Alpha_P =0.1
+        P_field += Alpha_P*P_prime
+        
+        # Gradient de pression pour l'itération suivante 
+        bcdp = [["Libre",0],["NEUMANN",1],["DIRICHLET",2],["NEUMANN",3]]
+        grad_P = flow.least_squares_gradient(P_field,bcdp)
+        Un = UF
+        condition = np.max(np.abs(div_initial))
+        
+        # NOuveau Fi pour
+        Fi_initial = flow.Fi_nouveau(up,vp)
+        
+        
+    iterations = range(1, len(div_residuals) + 1)
+    plt.semilogy(iterations, div_residuals, 'k-', label=f'Max divergence')
+    plt.grid(True)
+    plt.xlabel('Itération')
+    plt.ylabel('Residual (échelle log )')
+    plt.title(f'Convergence - {mesh_type} Mesh (lc:{lc})')
+    plt.legend()      
+    plt.gcf()
+        
+    # Plot results
+    plotter = VelocityPressurePlotter(flow)
+    plotter.plot_u_velocity(u, title=f"U Velocity ")
+    plotter.plot_pressure(P_field, title=f"Pressure Field ")
+    plotter.plot_vector_field(u, v, title=f"Vector Field ")
         
 
 if __name__ == "__main__":
     main()
+

@@ -236,6 +236,7 @@ class MeshGenerator:
         # # Points of the geometry
         if 'lc' in mesh_parameters:
             lc = mesh_parameters['lc']
+            lcs=0.2*lc
         else:
             lc = 0.0
         #         P1-------------------------------------- P6
@@ -248,8 +249,8 @@ class MeshGenerator:
         #                            P4 ------------------ P5
         gmsh.model.geo.addPoint(0.0, H1,    0.0, lc, 1)  # Pt1
         gmsh.model.geo.addPoint(0.0, 0.0,   0.0, lc, 2)  # Pt2
-        gmsh.model.geo.addPoint(L1,  0.0,   0.0, lc, 3)  # Pt3
-        gmsh.model.geo.addPoint(L1,  H1-H2, 0.0, lc, 4)  # Pt4
+        gmsh.model.geo.addPoint(L1,  0.0,   0.0, lcs, 3)  # Pt3
+        gmsh.model.geo.addPoint(L1,  H1-H2, 0.0, lcs, 4)  # Pt4
         gmsh.model.geo.addPoint(L2,  H1-H2, 0.0, lc, 5)  # Pt5
         gmsh.model.geo.addPoint(L2,  H1,    0.0, lc, 6)  # Pt6
         gmsh.model.geo.addPoint(L1,  H1,    0.0, lc, 7)  # Pt7

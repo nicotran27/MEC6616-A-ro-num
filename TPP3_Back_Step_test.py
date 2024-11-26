@@ -34,8 +34,8 @@ class CouetteFlow:
         
         # Propriétés physiques
         self.rho = 1.0  # Masse volumique [kg/m^3]
-        self.mu = 0.02  # Viscosité dynamique [N*s/m^2]
-        self.U = 1.5    # Vitesse de la paroi supérieure [m/s]
+        self.mu = 1/100  # Viscosité dynamique [N*s/m^2]
+        self.U = 1    # Vitesse de la paroi supérieure [m/s]
         
         # Propriétés du maillage
         self.mesh = None
@@ -65,7 +65,7 @@ class CouetteFlow:
         mesh_parameters = {'mesh_type': 'TRI',
                            'lc': lc
                            }
-        self.mesh = mesh_generator.back_step(.5, 1, 4, 16, mesh_parameters)
+        self.mesh = mesh_generator.back_step(.5, 1, 4, 20, mesh_parameters)
             
             # Calcul de la connectivité
         mesh_connectivity = MeshConnectivity(self.mesh)
@@ -701,10 +701,10 @@ class CouetteFlow:
                 # Interpolation simple de la vitesse
                 u_avg = 0.5 * (u[left_cell] + u[right_cell])
                 v_avg = 0.5 * (v[left_cell] + v[right_cell])
-                #print("uleft",u[left_cell])
-                #print("uright",u[right_cell])
-                #print("nx",nx)
-                #print("u-",u_avg)
+                print("uleft",u[left_cell])
+                print("uright",u[right_cell])
+                print("nx",nx)
+                print("u-",u_avg)
                 U_avg = u_avg * nx + v_avg * ny
                 #print("V_avg", V_avg)
                 #print("u_avg", u_avg)
@@ -1081,117 +1081,102 @@ def main():
   
     H = 1.0   
     h = 0.5   
-    L = 16.0  
+    L = 20  
     Ls = 4.0   
     
     flow = CouetteFlow(0, L, 0, H)
-    bcdata = [
-            ["DIRICHLET", 0],  
-            ["DIRICHLET", 1],
-            ["NEUMANN", 2],   
-            ["DIRICHLET", 3]   
-        ]
+    bcdata = [["DIRICHLET",0],["DIRICHLET",1],["DIRICHLET",2],["DIRICHLET",3]]
     mesh_parameters = {
             'mesh_type': 'TRI',
             'lc': 1  
         }
     mesh_parameters = [["TRI",1]]
-    max_iterations = 2000
+    max_iterations = 500
     div_residuals = []
     for i in range(1): 
         if 0==0 : 
             lc = mesh_parameters[i][1]
             mesh_type = mesh_parameters[i][0]
             
-    flow.generate_mesh(mesh_parameters)
-    #Etape 1 de l'algorithme Simple 
+            flow.generate_mesh(mesh_parameters)
+            #Etape 1 de l'algorithme Simple 
 
-    n_elements = flow.mesh.get_number_of_elements()
-    u = np.zeros(n_elements)
-    v = np.zeros(n_elements)
-    P_field = np.zeros(n_elements)
+            n_elements = flow.mesh.get_number_of_elements()
+            u = np.zeros(n_elements)
+            v = np.zeros(n_elements)
+            P_field = np.zeros(n_elements)
     
-   
-    for i_elem in range(n_elements):
-        x, y = flow.cell_centers[i_elem]
+            # Calculer les gradients de pression en utilisant les moindres carrés
+            grad_P = flow.least_squares_gradient(P_field)
+            #print("grad_P",grad_P)
         
-       
-        u[i_elem], v[i_elem] = flow.analytical_solution(x, y, P=0)
+            # Etape 2 de l'algorithme Simple 
+            # Calcul du champ de vitesse initial
+            F_initial = flow.initialisation_flux(u,v)
+            #print("F_initial", F_initial)
+            #print(np.size(F_initial))
         
+            condition = 1
+            iteration = 0
+            while condition > 10**-14 and iteration <max_iterations: 
+                iteration+=1
+                # Etape 3
+                up,vp,aP = flow.assemblage_lap_4(F_initial,u,v,grad_P,bcdata)
+              
+               
+                
+                # Etape 4 : Moyenne des vitesses de Rhie Chow 
+                UnRC,VnRC,aP = flow.Rhie_Chow(F_initial,up,vp,grad_P,aP,P_field,bcdata)
+                #print(UnRC)
+                
+            #     if iteration ==1 : 
+            #         Un = UnRC
+            #     # SOus relaxation de Rhie CHOW  
+            #     alphaRC =.1
+            #     UnRC = flow.relaxation_RC(UnRC,Un,alphaRC)
+                
+            #     # Etape 5 
+            #     bcdpc = [["ENTREE",0],["PAROI",1],["SORTIE",2],["PAROI",3]]
+            #     P_prime, UF = flow.Correction_pression(UnRC,aP,bcdpc)
+                
         
-        P_field[i_elem] = flow.champ_P(x, y, P=0)
-    
-    
-    # Calculer les gradients de pression en utilisant les moindres carrés
-    grad_P = flow.least_squares_gradient(P_field)
-    #print("grad_P",grad_P)
-
-    # Etape 2 de l'algorithme Simple 
-    # Calcul du champ de vitesse initial
-    F_initial = flow.initialisation_flux(u,v)
-    #print("F_initial", F_initial)
-    #print(np.size(F_initial))
-
-    condition = 1
-    iteration = 0
-    while condition > 10**-14 and iteration <max_iterations: 
-        iteration+=1
-        # Etape 3
-        up,vp,aP = flow.assemblage_lap_4(F_initial,u,v,grad_P,bcdata)
-        # print("up",up)
-        # print("vp",vp)
+            #     # # Affichage des statistiques de divergence
+            #     div_initial = flow.Calcul_divergence(UnRC)
+            #     div_max = np.sum(np.abs(div_initial))
+            #     div_residuals.append(div_max)
+            #     print(iteration,':',div_max)
         
-        # Etape 4 : Moyenne des vitesses de Rhie Chow 
-        UnRC,VnRC,aP = flow.Rhie_Chow(F_initial,up,vp,grad_P,aP,P_field,bcdata)
-        #print(UnRC)
-        
-        if iteration ==1 : 
-            Un = UnRC
-        # SOus relaxation de Rhie CHOW  
-        alphaRC =.1
-        UnRC = flow.relaxation_RC(UnRC,Un,alphaRC)
-        
-        # Etape 5 
-        bcdpc = [["ENTREE",0],["PAROI",1],["SORTIE",2],["PAROI",3]]
-        P_prime, UF = flow.Correction_pression(UnRC,aP,bcdpc)
-        
-
-        # # Affichage des statistiques de divergence
-        div_initial = flow.Calcul_divergence(UnRC)
-        div_max = np.sum(np.abs(div_initial))
-        div_residuals.append(div_max)
-
-        
-        #Correction du champ de pression 
-        Alpha_P =0.1
-        P_field += Alpha_P*P_prime
-        
-        # Gradient de pression pour l'itération suivante 
-        bcdp = [["Libre",0],["NEUMANN",1],["DIRICHLET",2],["NEUMANN",3]]
-        grad_P = flow.least_squares_gradient(P_field,bcdp)
-        Un = UF
-        condition = np.max(np.abs(div_initial))
-        
-        # NOuveau Fi pour
-        Fi_initial = flow.Fi_nouveau(up,vp)
-        
-        
-    iterations = range(1, len(div_residuals) + 1)
-    plt.semilogy(iterations, div_residuals, 'k-', label=f'Max divergence')
-    plt.grid(True)
-    plt.xlabel('Itération')
-    plt.ylabel('Residual (échelle log )')
-    plt.title(f'Convergence - {mesh_type} Mesh (lc:{lc})')
-    plt.legend()      
-    plt.gcf()
-        
-    # Plot results
-    plotter = VelocityPressurePlotter(flow)
-    plotter.plot_u_velocity(u, title=f"U Velocity ")
-    plotter.plot_pressure(P_field, title=f"Pressure Field ")
-    plotter.plot_vector_field(u, v, title=f"Vector Field ")
+                
+            #     #Correction du champ de pression 
+            #     Alpha_P =0.1
+            #     P_field += Alpha_P*P_prime
+                
+            #     # Gradient de pression pour l'itération suivante 
+            #     bcdp = [["Libre",0],["NEUMANN",1],["DIRICHLET",2],["NEUMANN",3]]
+            #     grad_P = flow.least_squares_gradient(P_field,bcdp)
+            #     Un = UF
+            #     condition = np.max(np.abs(div_initial))
+                
+            #     # NOuveau Fi pour
+            #     Fi_initial = flow.Fi_nouveau(up,vp)
+            
+            # print(iteration,':',UnRC)
+          
+            iterations = range(1, len(div_residuals) + 1)
+            plt.semilogy(iterations, div_residuals, 'k-', label=f'Max divergence')
+            plt.grid(True)
+            plt.xlabel('Itération')
+            plt.ylabel('Residual (échelle log )')
+            plt.title(f'Convergence - {mesh_type} Mesh (lc:{lc})')
+            plt.legend()      
+            plt.gcf()
+                    
+                # Plot results
+            plotter = VelocityPressurePlotter(flow)
+            plotter.plot_u_velocity(u, title=f"U Velocity ")
+            plotter.plot_pressure(P_field, title=f"Pressure Field ")
+            plotter.plot_vector_field(u, v, title=f"Vector Field ")
         
 
 if __name__ == "__main__":
     main()
-

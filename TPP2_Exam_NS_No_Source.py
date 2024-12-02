@@ -925,8 +925,8 @@ class ConvectionDiffusionAnalyzer:
         
       
 def main():
-    lc_values = [0.2,0.1]
-    k_values = [0.1,0.0001]
+    lc_values = [0.5,.2]
+    k_values = [1000,1]
     schemes = ['centré', 'upwind']
     
     for lc in lc_values:
@@ -934,7 +934,7 @@ def main():
         analyzer.generate_mesh(lc)
         
         for k in k_values:
-            fluide = {"Gamma": k, "Rho": 1.0, "Cp": 1.0}
+            fluide = {"Gamma": k, "Rho": 1.0, "Cp": 10000}
             bcdata = analyzer.get_analytical_bcdata()
             
             for scheme in schemes:

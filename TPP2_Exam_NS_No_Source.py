@@ -652,12 +652,12 @@ class ConvectionDiffusionAnalyzer:
         
         grid = self.create_pyvista_grid(self.T_mms_values)
         
-        pl = pvQt.BackgroundPlotter()
-        pl.add_mesh(grid, scalars='Température', show_edges=True, cmap="RdBu", 
-                    clim=[self.T_mms_values.min(), self.T_mms_values.max()])
-        contours = grid.contour(scalars='Température', isosurfaces=10)
-        pl.add_mesh(contours, color="white", line_width=2)
-        pl.add_text('T_mms Distribution', font_size=12)
+        # pl = pvQt.BackgroundPlotter()
+        # pl.add_mesh(grid, scalars='Température', show_edges=True, cmap="RdBu", 
+        #             clim=[self.T_mms_values.min(), self.T_mms_values.max()])
+        # contours = grid.contour(scalars='Température', isosurfaces=10)
+        # pl.add_mesh(contours, color="white", line_width=2)
+        # pl.add_text('T_mms Distribution', font_size=12)
         # pl.show()
         
     def plot_cross_section_profiles(self, all_profiles, analytical_profiles, constant_type='x'):
@@ -877,12 +877,12 @@ class ConvectionDiffusionAnalyzer:
 
     def get_analytical_bcdata(self):
         """Set boundary conditions according to the problem"""
-        x = sp.symbols('x')
-        T_inlet = sp.tanh(-20*(x-1.6)) - sp.tanh(-20*(x-1.4))
-        T_inlet_func = sp.lambdify((x,), T_inlet, 'numpy')  # Note the tuple (s,)
+        y = sp.symbols('y')
+        T_inlet = sp.tanh(-20*(y-1.6)) - sp.tanh(-20*(y-1.4))
+        T_inlet_func = sp.lambdify((y,), T_inlet, 'numpy')  # Note the tuple (s,)
         
         bcdata = [
-            ('DIRICHLET', T_inlet_func),  # Inlet
+            ('DIRICHLET',  T_inlet_func),  # Inlet
             ('NEUMANN', 0.0),           # Upper curved boundary
             ('NEUMANN', 0.0),           # Lower curved boundary  
             ('NEUMANN', 0.0)            # Outlet
@@ -925,8 +925,8 @@ class ConvectionDiffusionAnalyzer:
         
       
 def main():
-    lc_values = [0.2, 0.1]
-    k_values = [0.1]
+    lc_values = [0.2,0.1]
+    k_values = [0.1,0.0001]
     schemes = ['centré', 'upwind']
     
     for lc in lc_values:
